@@ -1,0 +1,1151 @@
+-- ex.catch
+
+-- a free da hood script
+-- if you bought this script or the source, you have been scammed and you must request your money back
+
+-- made by zcharo99
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local stats = game:GetService("Stats")
+local uis = game:GetService("UserInputService")
+local cam = workspace.CurrentCamera
+local drawing = Drawing or getgenv().Drawing
+
+local localPlayer = Players.LocalPlayer
+local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
+local backpack = localPlayer:WaitForChild("Backpack")
+local wallet = backpack:FindFirstChild("Wallet")
+
+local autostomp = false
+local autostompTpToPlayer = false
+
+local aimlockEnabled = false
+local aimlockKey = Enum.KeyCode.E
+local aiming = false
+local aimlockFovRadius = 200
+
+local mouselockEnabled = false
+local mouselockKey = Enum.KeyCode.F
+local mouseAiming = false
+local mouselockFovRadius = 700
+
+local currentAimlockTarget = nil
+local currentMouselockTarget = nil
+local aimlockTarget = nil
+local mouselockTarget = nil
+
+local espEnabled = false
+local boxesEnabled = true
+local tracersEnabled = false
+local namesEnabled = false
+local distanceEnabled = false
+local healthEnabled = false
+local glowEspEnabled = false
+local espVisuals = {}
+local activeHighlights = {}
+local playerLines = {}
+local boneEspEnabled = false
+local r15Bones = {
+	{"Head", "UpperTorso"},
+	{"UpperTorso", "LowerTorso"},
+	{"LeftUpperArm", "UpperTorso"},
+	{"LeftUpperArm", "LeftLowerArm"},
+	{"LeftLowerArm", "LeftHand"},
+	{"RightUpperArm", "UpperTorso"},
+	{"RightUpperArm", "RightLowerArm"},
+	{"RightLowerArm", "RightHand"},
+	{"LowerTorso", "LeftUpperLeg"},
+	{"LeftUpperLeg", "LeftLowerLeg"},
+	{"LeftLowerLeg", "LeftFoot"},
+	{"LowerTorso", "RightUpperLeg"},
+	{"RightUpperLeg", "RightLowerLeg"},
+	{"RightLowerLeg", "RightFoot"},
+}
+local r6Bones = {
+	{"Head", "Torso"},
+	{"Torso", "Left Arm"},
+	{"Torso", "Right Arm"},
+	{"Torso", "Left Leg"},
+	{"Torso", "Right Leg"},
+}
+
+local selectedPlayer = nil
+local playersList = nil
+
+local speed = 3
+local CFrameSpeed = false
+local CFrameSpeedKey = Enum.KeyCode.Q
+local moveKeys = {
+	[Enum.KeyCode.W] = Vector3.new(0, 0, -1),
+	[Enum.KeyCode.S] = Vector3.new(0, 0, 1),
+	[Enum.KeyCode.A] = Vector3.new(-1, 0, 0),
+	[Enum.KeyCode.D] = Vector3.new(1, 0, 0),
+}
+local inputState = {}
+
+local welcomeMsg = "welcome back!"
+
+local repo = 'https://raw.githubusercontent.com/zcharo99/LinoriaLib/refs/heads/main/'
+
+local fovCircle = drawing.new("Circle")
+fovCircle.Transparency = 0.6
+fovCircle.Thickness = 2
+fovCircle.Color = Color3.fromRGB(255, 255, 255)
+fovCircle.Filled = false
+fovCircle.Visible = false
+
+if not isfolder('excatch') then
+    makefolder('excatch')
+    welcomeMsg = "welcome to ex.catch!"
+end
+
+if not isfolder('excatch/themes') then
+    makefolder('excatch/themes')
+end
+
+if not isfile('excatch/themes/main.json') or not isfile('excatch/themes/default.txt') then
+    writefile('excatch/themes/main.json', '{"FontColor":"d2d0e0","MainColor":"292929","AccentColor":"5900ff","BackgroundColor":"202020","OutlineColor":"404040"}')
+    writefile('default.txt', "main.json")
+end
+
+if not isfolder('excatch/fonts') then
+    makefolder('excatch/fonts')
+end
+
+if not isfile('excatch/fonts/main.ttf') then
+    writefile('excatch/fonts/main.ttf', game:HttpGet(repo .. "main.ttf"))
+end
+
+if isfile('excatch/fonts/main_encoded.ttf') then
+    delfile('excatch/fonts/main_encoded.ttf')
+    writefile("excatch/fonts/main_encoded.ttf", "{\"name\":\"SmallestPixel7\",\"faces\":[{\"style\":\"normal\",\"assetId\":\"" .. getcustomasset("excatch/fonts/main.ttf") .. "\",\"name\":\"Regular\",\"weight\":400}]}")
+else
+    writefile("excatch/fonts/main_encoded.ttf", "{\"name\":\"SmallestPixel7\",\"faces\":[{\"style\":\"normal\",\"assetId\":\"" .. getcustomasset("excatch/fonts/main.ttf") .. "\",\"name\":\"Regular\",\"weight\":400}]}")
+end
+
+local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
+local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
+local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
+
+local function switch(value)
+	return function(cases)
+		setmetatable(cases, cases)
+		
+		local f = cases[value]
+		if f then
+			f()
+		end
+	end
+end
+
+local function isStandingOnPlayer()
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if not rootPart then return nil end
+
+	local rayOrigin = rootPart.Position
+	local rayDirection = Vector3.new(0, -5, 0)
+
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+	raycastParams.FilterDescendantsInstances = {character}
+	raycastParams.IgnoreWater = true
+
+	local result = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+
+	if result and result.Instance then
+		local hitPart = result.Instance
+		local hitCharacter = hitPart:FindFirstAncestorOfClass("Model")
+		if hitCharacter and Players:GetPlayerFromCharacter(hitCharacter) then
+			return Players:GetPlayerFromCharacter(hitCharacter)
+		end
+	end
+
+	return nil
+end
+
+local function getPing()
+	local pingStr = stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
+	return tonumber(pingStr:match("%d+")) or 0
+end
+
+local function getPrediction()
+	local ping = getPing()
+	return math.clamp(ping / 1000 - 0.2, 0.1, 0.2)
+end
+
+local function aimAt(pos)
+	cam.CFrame = CFrame.new(cam.CFrame.Position, pos)
+end
+
+local function enableChatWindow(bool)
+    game:GetService("TextChatService").ChatWindowConfiguration.Enabled = bool
+end
+
+local function moveMouseToWorldPosition(worldPos)
+    local screenPos, onScreen = cam:WorldToViewportPoint(worldPos)
+    if not onScreen then return end
+
+    local mousePos = uis:GetMouseLocation()
+    local dx = screenPos.X - mousePos.X
+    local dy = screenPos.Y - mousePos.Y
+
+    local threshold = 2
+    if math.abs(dx) > threshold or math.abs(dy) > threshold then
+        mousemoverel(dx * 0.8, dy * 0.8)
+    end
+end
+
+local function getAimlockClosestPlayer()
+    if currentAimlockTarget and currentAimlockTarget.Character and currentAimlockTarget.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = currentAimlockTarget.Character.HumanoidRootPart
+        local screenPos, onScreen = cam:WorldToViewportPoint(hrp.Position)
+        if onScreen and (Vector2.new(screenPos.X, screenPos.Y) - uis:GetMouseLocation()).Magnitude <= aimlockFovRadius then
+            return currentAimlockTarget
+        else
+            currentAimlockTarget = nil
+        end
+    end
+
+    local closest = nil
+    local shortest = math.huge
+    local mousePos = uis:GetMouseLocation()
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = player.Character.HumanoidRootPart
+            local screenPos, onScreen = cam:WorldToViewportPoint(hrp.Position)
+            if onScreen then
+                local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                if dist <= aimlockFovRadius and dist < shortest then
+                    shortest = dist
+                    closest = player
+                end
+            end
+        end
+    end
+
+    currentAimlockTarget = closest
+    return closest
+end
+
+local function getMouselockClosestPlayer()
+    if currentMouselockTarget and currentMouselockTarget.Character and currentMouselockTarget.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = currentMouselockTarget.Character.HumanoidRootPart
+        local screenPos, onScreen = cam:WorldToViewportPoint(hrp.Position)
+        if onScreen and (Vector2.new(screenPos.X, screenPos.Y) - uis:GetMouseLocation()).Magnitude <= mouselockFovRadius then
+            return currentMouselockTarget
+        else
+            currentMouselockTarget = nil
+        end
+    end
+
+    local closest = nil
+    local shortest = math.huge
+    local mousePos = uis:GetMouseLocation()
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = player.Character.HumanoidRootPart
+            local screenPos, onScreen = cam:WorldToViewportPoint(hrp.Position)
+            if onScreen then
+                local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                if dist <= mouselockFovRadius and dist < shortest then
+                    shortest = dist
+                    closest = player
+                end
+            end
+        end
+    end
+
+    currentMouselockTarget = closest
+    return closest
+end
+
+local function watchPlayer(target)
+    local char = target.Character or target.CharacterAdded:Wait()
+    local humanoid = char:WaitForChild("Humanoid")
+
+    cam.CameraSubject = humanoid
+    cam.CameraType = Enum.CameraType.Custom
+end
+
+local function unwatchPlayers()
+    cam.CameraSubject = character:WaitForChild("Humanoid")
+end
+
+local function teleportToPlayer(target)
+    character:WaitForChild("HumanoidRootPart").CFrame = target.Character:WaitForChild("HumanoidRootPart").CFrame + Vector3.new(-2, 2, 0)
+end
+
+local function getPlayers()
+	local playrs = {}
+	for _, plr in ipairs(Players:GetPlayers()) do
+    	table.insert(playrs, plr.Name)
+	end
+	return playrs
+end
+playersList = getPlayers()
+
+-- esp (im dead x2)
+
+local function clearESP()
+    for _, v in pairs(espVisuals) do
+        v.square:Remove()
+        v.line:Remove()
+        v.nameText:Remove()
+        v.displayName:Remove()
+        v.distanceText:Remove()
+        v.healthText:Remove()
+    end
+    for v in pairs(espVisuals) do
+        espVisuals[v] = nil
+    end
+end
+
+local function clearGlowESP()
+    for v in pairs(activeHighlights) do
+        v:Destroy()
+        activeHighlights[v] = nil
+    end
+end
+
+local function createESP(playerObj)
+    if playerObj == player then return end
+    local char = playerObj.Character
+    if not char then return end
+    local head = char:FindFirstChild("HumanoidRootPart")
+    if not head then return end
+
+    local square = Drawing.new("Square")
+    square.Visible = false
+    square.Color = Color3.fromRGB(255, 255, 255)
+    square.Thickness = 2
+    square.Filled = false
+
+    local line = Drawing.new("Line")
+    line.Visible = false
+    line.Thickness = 1.5
+    line.Color = Color3.fromRGB(255, 255, 255)
+
+    local nameText = Drawing.new("Text")
+    nameText.Size = 14
+    nameText.Center = true
+    nameText.Outline = true
+    nameText.Color = Color3.fromRGB(255, 255, 255)
+    nameText.Visible = false
+    nameText.Font = 2
+    
+    local displayName = Drawing.new("Text")
+    displayName.Size = 14
+    displayName.Center = true
+    displayName.Outline = true
+    displayName.Color = Color3.fromRGB(200, 200, 255)
+    displayName.Visible = false
+    displayName.Font = 2
+    
+    local distanceText = Drawing.new("Text")
+    distanceText.Size = 14
+    distanceText.Center = true
+    distanceText.Outline = true
+    distanceText.Color = Color3.fromRGB(255, 255, 255)
+    distanceText.Visible = false
+    distanceText.Font = 2
+    
+    local healthText = Drawing.new("Text")
+    healthText.Size = 14
+    healthText.Center = true
+    healthText.Outline = true
+    healthText.Color = Color3.fromRGB(255, 255, 255)
+    healthText.Visible = false
+    healthText.Font = 2
+
+    table.insert(espVisuals, {
+        player = playerObj,
+        head = head,
+        square = square,
+        line = line,
+        nameText = nameText,
+        displayName = displayName,
+        distanceText = distanceText,
+        healthText = healthText,
+    })
+end
+
+local function updateHighlight(player)
+	if player == localPlayer then return end
+	if not player.Character then return end
+
+	local highlight = activeHighlights[player]
+
+	if glowEspEnabled then
+		if not highlight or not highlight.Parent then
+			highlight = Instance.new("Highlight")
+			highlight.Adornee = player.Character
+			highlight.FillColor = Color3.fromRGB(255, 100, 255)
+			highlight.FillTransparency = 0.5
+			highlight.OutlineColor = Color3.fromRGB(0, 0, 0)
+			highlight.OutlineTransparency = 0
+			highlight.Parent = player.Character
+			highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			activeHighlights[player] = highlight
+		end
+	else
+		if highlight then
+			highlight:Destroy()
+			activeHighlights[player] = nil
+		end
+	end
+end
+
+local function clampOffscreen(screenPos)
+	local screenSize = cam.ViewportSize
+	local center = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
+	local dir = (screenPos - center).Unit
+
+	local border = 50
+	local halfSize = Vector2.new(screenSize.X / 2 + border, screenSize.Y / 2 + border)
+
+	local scaleX = halfSize.X / math.abs(dir.X)
+	local scaleY = halfSize.Y / math.abs(dir.Y)
+	local scale = math.min(scaleX, scaleY)
+	local clamped = center + dir * scale
+
+	return clamped
+end
+
+local function getDistance(targetPlayer)
+    if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local localChar = localPlayer.Character
+        if localChar and localChar:FindFirstChild("HumanoidRootPart") then
+            local localPos = localChar.HumanoidRootPart.Position
+            local targetPos = targetPlayer.Character.HumanoidRootPart.Position
+            return math.floor((localPos - targetPos).Magnitude / 3)
+        end
+    end
+end
+
+local function createBoneLines()
+	local lines = {}
+	for _ = 1, 20 do
+		local line = Drawing.new("Line")
+		line.Thickness = 1
+		line.Color = Color3.fromRGB(255, 255, 255)
+		line.Visible = false
+		table.insert(lines, line)
+	end
+	return lines
+end
+
+local function addBonePlayer(player)
+	if player == LocalPlayer then return end
+	playerLines[player] = createBoneLines()
+end
+
+local function removeBonePlayer(player)
+	local lines = playerLines[player]
+	if lines then
+		for _, line in ipairs(lines) do
+			line:Remove()
+		end
+	end
+	playerLines[player] = nil
+end
+
+-- esp end
+
+local renderSteppedConnection = RunService.RenderStepped:Connect(function()
+	if autostomp then
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if autostompTpToPlayer then
+            for _, v in pairs(Players:GetPlayers()) do
+                if v.Character and v.Character.BodyEffects and v.Character.BodyEffects["K.O"] and v.Character.BodyEffects["K.O"].Value then
+                    local targetHRP = v.Character:FindFirstChild("UpperTorso")
+                    local newPos = targetHRP.Position + Vector3.new(0, 2, 0)
+
+                    hrp.CFrame = CFrame.new(newPos)
+                end
+            end
+        end
+        local onTopOf = isStandingOnPlayer()
+        local isKO;
+
+        if onTopOf and onTopOf.Character then
+            isKO = onTopOf.Character.BodyEffects["K.O"].Value
+        else
+            isKO = false
+        end
+
+	    if onTopOf and isKO then
+		    print("Stomping " .. onTopOf.Name)
+            game:GetService("ReplicatedStorage"):WaitForChild("MainRemotes"):WaitForChild("MainRemoteEvent"):FireServer("Stomp")
+	    end
+    end
+
+    local mousePos = uis:GetMouseLocation()
+	fovCircle.Position = mousePos
+
+    if aimlockEnabled then
+        fovCircle.Visible = true
+        fovCircle.Radius = aimlockFovRadius
+        fovCircle.Color = Color3.fromRGB(255, 255, 255)
+        if aiming then
+            if not aimlockTarget or not aimlockTarget.Character or not aimlockTarget.Character:FindFirstChild("HumanoidRootPart") then
+                aimlockTarget = getAimlockClosestPlayer()
+            end
+
+            if aimlockTarget and aimlockTarget.Character and aimlockTarget.Character:FindFirstChild("HumanoidRootPart") then
+                local hrp = aimlockTarget.Character.HumanoidRootPart
+                local predictedPos = hrp.Position + (hrp.Velocity * getPrediction())
+                aimAt(predictedPos)
+            end
+        else
+            aimlockTarget = nil
+        end
+    else
+        fovCircle.Visible = false
+        aimlockTarget = nil
+    end
+
+    if mouselockEnabled then
+        fovCircle.Radius = mouselockFovRadius
+        fovCircle.Color = Color3.fromRGB(205, 179, 255)
+        fovCircle.Visible = true
+        if mouseAiming then
+            if not mouselockTarget or not mouselockTarget.Character or not mouselockTarget.Character:FindFirstChild("HumanoidRootPart") then
+                mouselockTarget = getMouselockClosestPlayer()
+            end
+
+            if mouselockTarget and mouselockTarget.Character and mouselockTarget.Character:FindFirstChild("HumanoidRootPart") then
+                local hrp = mouselockTarget.Character.HumanoidRootPart
+                local predictedPos = hrp.Position + (hrp.Velocity * getPrediction())
+                moveMouseToWorldPosition(predictedPos)
+            end
+        else
+            mouselockTarget = nil
+        end
+    else
+        fovCircle.Visible = false
+        mouselockTarget = nil
+    end
+    
+    
+    
+    local screenCenter = cam.ViewportSize / 2
+
+	for _, v in pairs(espVisuals) do
+		if not espEnabled or not v.head or not v.head:IsDescendantOf(workspace) or v.player.Character.Humanoid.Health < 0 or v.player == localPlayer then
+			v.square.Visible = false
+			v.line.Visible = false
+			v.nameText.Visible = false
+			v.displayName.Visible = false
+			v.healthText.Visible = false
+			v.distanceText.Visible = false
+			continue
+		end
+
+		local headPos = v.head.Position
+		local screenPos, onScreen = cam:WorldToViewportPoint(headPos)
+
+		if screenPos.Z < 0 then
+			v.square.Visible = false
+			v.line.Visible = false
+			v.nameText.Visible = false
+			v.displayName.Visible = false
+			v.healthText.Visible = false
+			v.distanceText.Visible = false
+			continue
+		end
+
+		local clampedPos
+        if onScreen then
+	        clampedPos = Vector2.new(screenPos.X, screenPos.Y)
+        elseif screenPos.Z > 0 then
+	        clampedPos = clampOffscreen(Vector2.new(screenPos.X, screenPos.Y))
+        else
+	        v.square.Visible = false
+	        v.line.Visible = false
+	        v.nameText.Visible = false
+	        v.displayName.Visible = false
+	        v.healthText.Visible = false
+			v.distanceText.Visible = false
+	        continue
+        end
+
+		local distance = (cam.CFrame.Position - headPos).Magnitude
+		local size = Vector2.new(100 / distance * 30, 160 / distance * 30)
+		local position = clampedPos - size / 2
+        
+        if boxesEnabled then
+		    v.square.Size = size
+		    v.square.Position = position
+		    v.square.Visible = true
+		else
+		    v.square.Visible = false
+		end
+        
+        if tracersEnabled then
+		    v.line.From = Vector2.new(screenCenter.X, cam.ViewportSize.Y)
+		    v.line.To = clampedPos
+		    v.line.Visible = true
+		else
+		    v.line.Visible = false
+		end
+        
+        if namesEnabled then
+		    v.nameText.Text = "@" .. v.player.Name
+		    v.nameText.Position = clampedPos - Vector2.new(0, size.Y / 2 + 15)
+		    v.nameText.Visible = true
+		
+		    v.displayName.Text = v.player.DisplayName
+		    v.displayName.Position = clampedPos - Vector2.new(0, size.Y / 2 + 30)
+		    v.displayName.Visible = true
+		else
+		    v.nameText.Visible = false
+		    v.displayName.Visible = false
+        end
+		
+        if distanceEnabled then
+		    v.distanceText.Text = getDistance(v.player) .. "m"
+		    v.distanceText.Position = clampedPos - Vector2.new(0, -size.Y / 2 - 5)
+		    v.distanceText.Visible = true
+        else
+            v.distanceText.Visible = false
+        end
+		
+        if healthEnabled then
+            local health;
+			local pos;
+            if not v.player.Character.Humanoid.Health then health = "???" else health = math.floor(v.player.Character.Humanoid.Health) end
+		    if not distanceEnabled then
+				pos = clampedPos - Vector2.new(0, -size.Y / 2 - 5)
+			else
+				pos = clampedPos - Vector2.new(0, -size.Y / 2 - 20)
+			end
+			v.healthText.Text = "Health: " .. health
+		    v.healthText.Position = pos
+		    v.healthText.Visible = true
+        else
+            v.healthText.Visible = false
+        end
+	end
+
+    for _, player in pairs(Players:GetPlayers()) do
+	    if player ~= localPlayer then
+		    updateHighlight(player)
+	    end
+    end
+    
+    for player, lines in pairs(playerLines) do
+		if not boneEspEnabled or not espEnabled or player == localPlayer then
+			for _, line in ipairs(lines) do line.Visible = false end
+			continue
+		end
+
+		local char = player.Character
+		if not char then
+			for _, line in ipairs(lines) do line.Visible = false end
+			continue
+		end
+
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		if not humanoid then continue end
+
+		local rigType = humanoid.RigType
+		local boneList = rigType == Enum.HumanoidRigType.R15 and r15Bones or r6Bones
+		local index = 1
+
+		for _, bone in ipairs(boneList) do
+			local part0 = char:FindFirstChild(bone[1])
+			local part1 = char:FindFirstChild(bone[2])
+
+			if part0 and part1 and lines[index] then
+				local pos0, on0 = cam:WorldToViewportPoint(part0.Position)
+				local pos1, on1 = cam:WorldToViewportPoint(part1.Position)
+
+				if on0 and on1 then
+					lines[index].From = Vector2.new(pos0.X, pos0.Y)
+					lines[index].To = Vector2.new(pos1.X, pos1.Y)
+					lines[index].Visible = true
+				else
+					lines[index].Visible = false
+				end
+			elseif lines[index] then
+				lines[index].Visible = false
+			end
+			index += 1
+		end
+
+		-- r6 extra arms + legs connection nyan~
+		if rigType == Enum.HumanoidRigType.R6 then
+			local torso = char:FindFirstChild("Torso")
+			local leftArm = char:FindFirstChild("Left Arm")
+			local rightArm = char:FindFirstChild("Right Arm")
+			local leftLeg = char:FindFirstChild("Left Leg")
+			local rightLeg = char:FindFirstChild("Right Leg")
+			local up = torso and torso.Position + Vector3.new(0, 1, 0)
+
+			local function draw(fromPos, toPart)
+				if not lines[index] then return end
+				if fromPos and toPart then
+					local pos0, on0 = cam:WorldToViewportPoint(fromPos)
+					local pos1, on1 = cam:WorldToViewportPoint(toPart.Position)
+					if on0 and on1 then
+						lines[index].From = Vector2.new(pos0.X, pos0.Y)
+						lines[index].To = Vector2.new(pos1.X, pos1.Y)
+						lines[index].Visible = true
+					else
+						lines[index].Visible = false
+					end
+				else
+					lines[index].Visible = false
+				end
+				index += 1
+			end
+
+			draw(up, leftArm)
+			draw(up, rightArm)
+			draw(torso and torso.Position, leftLeg)
+			draw(torso and torso.Position, rightLeg)
+		end
+
+		for i = index, #lines do
+			lines[i].Visible = false
+		end
+	end
+
+	if CFrameSpeed then
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		local cam = workspace.CurrentCamera
+		if not hrp or not cam or not humanoid then return end
+
+		local total = Vector3.zero
+		for key, dir in pairs(moveKeys) do
+			if inputState[key] then
+				total += dir
+			end
+		end
+
+		if total.Magnitude > 0 then
+			local camCF = cam.CFrame
+			local flatLook = Vector3.new(camCF.LookVector.X, 0, camCF.LookVector.Z).Unit
+			local flatCF = CFrame.new(Vector3.zero, flatLook)
+			local moveDir = flatCF:VectorToWorldSpace(total.Unit).Unit * speed
+
+			local newPos = Vector3.new(hrp.Position.X + moveDir.X, hrp.Position.Y, hrp.Position.Z + moveDir.Z)
+
+			local faceDir = Vector3.new(moveDir.X, 0, moveDir.Z)
+			if faceDir.Magnitude > 0 then
+				hrp.CFrame = CFrame.new(newPos, newPos + faceDir.Unit)
+			else
+				hrp.CFrame = CFrame.new(newPos, newPos + hrp.CFrame.LookVector)
+			end
+		end
+	end
+end)
+
+local Window = Library:CreateWindow({
+    Title = 'ex.catch',
+    Center = true,
+    AutoShow = true,
+    TabPadding = 8,
+    MenuFadeTime = 0.2
+})
+
+local Tabs = {
+    Combat = Window:AddTab('combat'),
+    Movement = Window:AddTab('movement'),
+    Players = Window:AddTab('players'),
+    Misc = Window:AddTab('misc'),
+    ['UI Settings'] = Window:AddTab('settings'),
+}
+
+Library:Notify(welcomeMsg, 5)
+
+local aimlockbox = Tabs.Combat:AddLeftGroupbox("locks")
+
+local aimlocktoggle;
+local mouselocktoggle;
+
+aimlocktoggle = aimlockbox:AddToggle("aimlock", {
+    Text = "aimlock",
+    Default = aimlockEnabled,
+    Tooltip = "locks your crosshair onto enemies, predicting their position",
+    Callback = function(Value)
+        if not Value then currentAimlockTarget = nil end
+        aimlockEnabled = Value
+        Library:Notify("aimlock " .. (aimlockEnabled and "enabled" or "disabled"))
+        if mouselocktoggle.Value == true then
+            mouselocktoggle:SetValue(false)
+        end
+    end,
+})
+aimlocktoggle:AddKeyPicker("aimlockkey", {
+    Default = "E",
+    SyncToggleState = false,
+    NoUI = true,
+    ChangedCallback = function(New)
+        aimlockKey = New
+    end
+})
+aimlockbox:AddSlider("aimlockradius", {
+    Text = "aimlock fov radius",
+    Default = aimlockFovRadius,
+    Min = 50,
+    Max = 500,
+    Rounding = 0,
+    Compact = true,
+    Callback = function(Value)
+        aimlockFovRadius = Value
+    end
+})
+
+mouselocktoggle = aimlockbox:AddToggle("mouselock", {
+    Text = "mouselock",
+    Default = mouselockEnabled,
+    Tooltip = "locks your mouse crosshair onto enemies, predicting their position",
+    Callback = function(Value)
+        if not Value then currentMouselockTarget = nil end
+        mouselockEnabled = Value
+        Library:Notify("mouselock " .. (mouselockEnabled and "enabled" or "disabled"))
+        if aimlocktoggle.Value == true then
+            aimlocktoggle:SetValue(false)
+        end
+    end
+})
+mouselocktoggle:AddKeyPicker("mouselockkey", {
+    Default = "F",
+    SyncToggleState = false,
+    NoUI = true,
+    ChangedCallback = function(New)
+        mouselockKey = New
+    end
+})
+aimlockbox:AddSlider("mouselockradius", {
+    Text = "mouselock fov radius",
+    Default = mouselockFovRadius,
+    Min = 100,
+    Max = 1000,
+    Rounding = 0,
+    Compact = true,
+    Callback = function(Value)
+        mouselockFovRadius = Value
+    end
+})
+
+local espbox = Tabs.Combat:AddLeftGroupbox('esp')
+espbox:AddToggle("esp", {
+    Text = "esp",
+    Default = espEnabled,
+    Callback = function(Value)
+        espEnabled = Value
+    end
+})
+espbox:AddToggle("boxes", {
+    Text = "boxes",
+    Default = boxesEnabled,
+    Callback = function(Value)
+        boxesEnabled = Value
+    end
+})
+espbox:AddToggle("tracers", {
+    Text = "tracers",
+    Defualt = tracersEnabled,
+    Callback = function(Value)
+        tracersEnabled = Value
+    end
+})
+espbox:AddToggle("usernames", {
+    Text = "username",
+    Default = namesEnabled,
+    Callback = function(Value)
+        namesEnabled = Value
+    end
+})
+espbox:AddToggle("distance", {
+    Text = "distance (meters)",
+    Default = distanceEnabled,
+    Callback = function(Value)
+        distanceEnabled = Value
+    end
+})
+espbox:AddToggle("health", {
+    Text = "health",
+    Default = healthEnabled,
+    Callback = function(Value)
+        healthEnabled = Value
+    end
+})
+espbox:AddToggle("bones", {
+    Text = 'bones',
+    Default = boneEspEnabled,
+    Callback = function(Value)
+        boneEspEnabled = Value
+    end
+})
+
+espbox:AddDivider()
+
+espbox:AddToggle("glowesp", {
+    Text = "glow esp",
+    Default = glowEspEnabled,
+    Callback = function(Value)
+        glowEspEnabled = Value
+    end
+})
+
+local uisBeganConnection = uis.InputBegan:Connect(function(input, gpe)
+    if uis:GetFocusedTextBox() then return end
+	if gpe then return end
+    if aimlockEnabled then
+        local code;
+        if aimlockKey.EnumType == Enum.KeyCode then
+            code = input.KeyCode
+        else
+            code = input.UserInputType
+        end
+	    if code == aimlockKey then
+		    aiming = not aiming
+            aimlockTarget = nil
+        end
+    end
+    if mouselockEnabled then
+        local code;
+        if mouselockKey.EnumType == Enum.KeyCode then
+            code = input.KeyCode
+        else
+            code = input.UserInputType
+        end
+        if code == mouselockKey then
+            mouseAiming = not mouseAiming
+            mouselockTarget = nil
+        end
+    end
+
+	if moveKeys[input.KeyCode] then
+		inputState[input.KeyCode] = true
+	elseif input.KeyCode == CFrameSpeedKey then
+		CFrameSpeed = not CFrameSpeed
+	elseif input.KeyCode == Enum.KeyCode.Space then
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		if humanoid and humanoid.FloorMaterial ~= Enum.Material.Air then
+			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end
+end)
+
+local autostompbox = Tabs.Combat:AddRightGroupbox("auto stomp")
+autostompbox:AddToggle("autostomp", {
+    Text = "auto stomp",
+    Default = autostomp,
+    Tooltip = "automatically stomps K.Oed players when you stand on top of them",
+    Callback = function(Value)
+        autostomp = Value
+        Library:Notify("autostomp " .. (autostomp and "enabled" or "disabled"))
+    end,
+})
+autostompbox:AddToggle("tptoplayer", {
+    Text = "tp to player",
+    Default = autostompTpToPlayer,
+    Tooltip = "automatically teleports you to K.Oed players and stomps them",
+    Callback = function(Value)
+        autostompTpToPlayer = Value
+        Library:Notify("tp to player " .. (autostompTpToPlayer and "enabled" or "disabled"))
+    end,
+})
+
+local macrobox = Tabs.Movement:AddLeftGroupbox("macro stuff")
+macrobox:AddButton({
+    Text = "setup legit macro",
+    Func = function()
+        if wallet then
+            Library:Notify("setting up macro", 2)
+	        game:GetService("ReplicatedStorage"):WaitForChild("MainRemotes"):WaitForChild("MainRemoteEvent"):FireServer(unpack({"AnimationPack", "Greet"}))
+	        wait(1.5)
+	        wallet.Parent = localPlayer.Character
+	        wallet.Parent = backpack
+            Library:Notify("macro setup done", 2)
+        else
+            Library:Notify("no wallet found in backpack", 5)
+        end
+    end,
+})
+
+local miscbox = Tabs.Misc:AddLeftGroupbox('chat')
+miscbox:AddToggle('chatwindowtoggle', {
+    Text = "chat window",
+    Default = false,
+    Callback = function(Value)
+        enableChatWindow(Value)
+    end
+})
+miscbox:AddButton({
+	Text = "load animation switcher",
+	Func = function()
+		loadstring(game:HttpGet("https://pastebin.com/raw/uYFmkND5"))()
+	end
+})
+
+local playersbox = Tabs.Players:AddLeftGroupbox('player actions')
+local playersListDropdown = playersbox:AddDropdown('players', {
+    Values = getPlayers(),
+    Default = 1,
+    Multi = false,
+    Callback = function(Value)
+        selectedPlayer = Players:FindFirstChild(Value)
+    end,
+})
+playersbox:AddButton({
+    Text = "watch",
+    Func = function()
+        watchPlayer(selectedPlayer)
+    end,
+}):AddButton({
+    Text = "unwatch",
+    Func = function()
+        unwatchPlayers()
+    end,
+})
+
+playersbox:AddButton({
+	Text = "teleport to player",
+	Func = function()
+		teleportToPlayer(selectedPlayer)
+	end
+})
+
+local playersAddedConnection = Players.PlayerAdded:Connect(function(p)
+    playersList = getPlayers()
+    playersListDropdown:SetValues(playersList)
+    p.CharacterAdded:Connect(function()
+        wait(1)
+        createESP(p)
+        updateHighlight(p)
+        addBonePlayer(p)
+    end)
+end)
+
+local playersRemovingConnection = Players.PlayerRemoving:Connect(function(p)
+    playersList = getPlayers()
+    playersListDropdown:SetValue(playersList)
+    for i, v in ipairs(espVisuals) do
+        if v.player == p then
+            v.square:Remove()
+            v.line:Remove()
+            v.nameText:Remove()
+            v.displayName:Remove()
+            v.healthText:Remove()
+            v.distanceText:Remove()
+            table.remove(espVisuals, i)
+            break
+        end
+    end
+    p.CharacterAdded:Connect(function()
+        wait(1)
+        removeBonePlayer(p)
+    end)
+end)
+
+for _, p in pairs(Players:GetPlayers()) do
+    if p ~= player and p.Character then
+        p.CharacterAdded:Connect(function(char)
+            wait(1)
+            local head = char:FindFirstChild("HumanoidRootPart")
+            for _, v in pairs(espVisuals) do
+                if v.player == p then
+                    v.head = head
+                    break
+                end
+            end
+            updateHighlight(p)
+        end)
+        
+        local head = p.Character:FindFirstChild("HumanoidRootPart")
+		if head then
+			local square = Drawing.new("Square")
+			square.Visible = false
+			square.Color = Color3.fromRGB(255, 255, 255)
+			square.Thickness = 2
+			square.Filled = false
+
+			local line = Drawing.new("Line")
+			line.Visible = false
+			line.Thickness = 1.5
+			line.Color = Color3.fromRGB(255, 255, 255)
+
+			local nameText = Drawing.new("Text")
+			nameText.Size = 14
+			nameText.Center = true
+			nameText.Outline = true
+			nameText.Color = Color3.fromRGB(255, 255, 255)
+			nameText.Visible = false
+			nameText.Font = Drawing.Fonts.Plex
+			
+			local displayName = Drawing.new("Text")
+            displayName.Size = 14
+            displayName.Center = true
+            displayName.Outline = true
+            displayName.Color = Color3.fromRGB(200, 200, 255)
+            displayName.Visible = false
+            displayName.Font = Drawing.Fonts.Plex
+
+			local distanceText = Drawing.new("Text")
+            distanceText.Size = 14
+            distanceText.Center = true
+            distanceText.Outline = true
+            distanceText.Color = Color3.fromRGB(255, 255, 255)
+            distanceText.Visible = false
+            distanceText.Font = Drawing.Fonts.Plex
+    
+            local healthText = Drawing.new("Text")
+            healthText.Size = 14
+            healthText.Center = true
+            healthText.Outline = true
+            healthText.Color = Color3.fromRGB(255, 255, 255)
+            healthText.Visible = false
+            healthText.Font = Drawing.Fonts.Plex
+
+            table.insert(espVisuals, {
+                player = p,
+                head = head,
+                square = square,
+                line = line,
+                nameText = nameText,
+                displayName = displayName,
+                distanceText = distanceText,
+                healthText = healthText,
+            })
+		end
+    end
+    if p ~= LocalPlayer then
+		addBonePlayer(p)
+	end
+end
+
+Library:OnUnload(function()
+    renderSteppedConnection:Disconnect()
+    uisBeganConnection:Disconnect()
+	playersAddedConnection:Disconnect()
+	playersRemovingConnection:Disconnect()
+    fovCircle:Remove()
+    Library.Unloaded = true
+    clearESP()
+    clearGlowESP()
+    for _, v in pairs(Players:GetPlayers()) do
+        removeBonePlayer(v)
+    end
+end)
+
+local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
+
+MenuGroup:AddButton('Unload', function() Library:Unload() end)
+MenuGroup:AddLabel('Menu bind'):AddKeyPicker('MenuKeybind', { Default = 'RightBracket', NoUI = true, Text = 'Menu keybind' })
+Library.ToggleKeybind = Options.MenuKeybind
+
+ThemeManager:SetLibrary(Library)
+ThemeManager:SetFolder("excatch")
+ThemeManager:ApplyToTab(Tabs['UI Settings'])
+
+ThemeManager:ApplyTheme("main.json")
+ThemeManager:ThemeUpdate()
