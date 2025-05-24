@@ -73,7 +73,7 @@ local r6Bones = {
 local selectedPlayer = nil
 local playersList = nil
 
-local speed = 3
+local CFrameSpeedMultiplier = 3
 local CFrameSpeed = false
 local CFrameSpeedKey = Enum.KeyCode.Q
 local moveKeys = {
@@ -715,10 +715,8 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function()
 	end
 
 	if CFrameSpeed then
-		local hrp = char:FindFirstChild("HumanoidRootPart")
-		local humanoid = char:FindFirstChildOfClass("Humanoid")
-		local cam = workspace.CurrentCamera
-		if not hrp or not cam or not humanoid then return end
+		local hrp = character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
 
 		local total = Vector3.zero
 		for key, dir in pairs(moveKeys) do
@@ -731,7 +729,7 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function()
 			local camCF = cam.CFrame
 			local flatLook = Vector3.new(camCF.LookVector.X, 0, camCF.LookVector.Z).Unit
 			local flatCF = CFrame.new(Vector3.zero, flatLook)
-			local moveDir = flatCF:VectorToWorldSpace(total.Unit).Unit * speed
+			local moveDir = flatCF:VectorToWorldSpace(total.Unit).Unit * CFrameSpeedMultiplier
 
 			local newPos = Vector3.new(hrp.Position.X + moveDir.X, hrp.Position.Y, hrp.Position.Z + moveDir.Z)
 
@@ -762,6 +760,8 @@ local Tabs = {
 }
 
 Library:Notify(welcomeMsg, 5)
+Library:SetWatermarkVisibility(true)
+Library:SetWatermark("ex.catch \ da hood script")
 
 local aimlockbox = Tabs.Combat:AddLeftGroupbox("locks")
 
@@ -928,10 +928,17 @@ local uisBeganConnection = uis.InputBegan:Connect(function(input, gpe)
 	elseif input.KeyCode == CFrameSpeedKey then
 		CFrameSpeed = not CFrameSpeed
 	elseif input.KeyCode == Enum.KeyCode.Space then
-		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
 		if humanoid and humanoid.FloorMaterial ~= Enum.Material.Air then
 			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 		end
+	end
+end)
+
+local uisEndedConnection = uis.InputEnded:Connect(function(input, gpe)
+	if gpe then return end
+	if moveKeys[input.KeyCode] then
+		inputState[input.KeyCode] = false
 	end
 end)
 
@@ -970,6 +977,26 @@ macrobox:AddButton({
             Library:Notify("no wallet found in backpack", 5)
         end
     end,
+})
+
+local cframespeedbox = Tabs.Movement:AddRightGroupbox('cframe speed')
+cframespeedbox:AddToggle('cframespeed', {
+	Text = 'enabled',
+	Default = CFrameSpeed,
+	Callback = function(Value)
+		CFrameSpeed = Value
+	end,
+})
+cframespeedbox:AddSlider('cframespeedmultiplier', {
+	Text = "multiplier",
+	Default = CFrameSpeedMultiplier,
+	Min = 0.1,
+	Max = 10,
+	Rounding = 1,
+	Compact = false,
+	Callback = function(Value)
+		CFrameSpeedMultiplier = Value
+	end
 })
 
 local miscbox = Tabs.Misc:AddLeftGroupbox('chat')
@@ -1126,6 +1153,7 @@ end
 Library:OnUnload(function()
     renderSteppedConnection:Disconnect()
     uisBeganConnection:Disconnect()
+	uisEndedConnection:Disconnect()
 	playersAddedConnection:Disconnect()
 	playersRemovingConnection:Disconnect()
     fovCircle:Remove()
