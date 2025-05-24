@@ -925,8 +925,6 @@ local uisBeganConnection = uis.InputBegan:Connect(function(input, gpe)
 
 	if moveKeys[input.KeyCode] then
 		inputState[input.KeyCode] = true
-	elseif input.KeyCode == CFrameSpeedKey then
-		CFrameSpeed = not CFrameSpeed
 	elseif input.KeyCode == Enum.KeyCode.Space then
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
 		if humanoid and humanoid.FloorMaterial ~= Enum.Material.Air then
@@ -986,6 +984,14 @@ cframespeedbox:AddToggle('cframespeed', {
 	Callback = function(Value)
 		CFrameSpeed = Value
 	end,
+}):AddKeyPicker('cframespeedkey', {
+    Default = 'Q',
+    SyncToggleState = true,
+    Mode = 'Toggle',
+    NoUI = true,
+    ChangedCallback = function(New)
+        CFrameSpeedKey = New
+    end
 })
 cframespeedbox:AddSlider('cframespeedmultiplier', {
 	Text = "multiplier",
