@@ -84,6 +84,12 @@ local moveKeys = {
 }
 local inputState = {}
 
+local targetStrafe = false
+local targetStrafeRadius = 10
+local targetStrafeSpeed = 8
+local targetStrafeHeight = 3
+local targetStrafeAngle = 0
+
 local welcomeMsg = "welcome back!"
 
 local repo = 'https://raw.githubusercontent.com/zcharo99/LinoriaLib/refs/heads/main/'
@@ -128,20 +134,32 @@ local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
 local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
 local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
-local function switch(value)
-	return function(cases)
-		setmetatable(cases, cases)
-		
-		local f = cases[value]
-		if f then
-			f()
-		end
+local function getHRP()
+	local char = Players.LocalPlayer.Character
+	if not char then return nil end
+
+	local newHrp = char:FindFirstChild("HumanoidRootPart")
+	if newHrp and newHrp:IsDescendantOf(game) then
+		return newHrp
 	end
+
+	return nil
+end
+
+local function getHumanoid()
+    local char = Players.LocalPlayer.Character
+	if not char then return nil end
+
+	local newHumanoid = char:FindFirstChildOfClass("Humanoid")
+	if newHumanoid and newHumanoid:IsDescendantOf(game) then
+		return newHumanoid
+	end
+
+	return nil
 end
 
 local function isStandingOnPlayer()
-	local rootPart = character:FindFirstChild("HumanoidRootPart")
-	if not rootPart then return nil end
+	local rootPart = getHRP()
 
 	local rayOrigin = rootPart.Position
 	local rayDirection = Vector3.new(0, -5, 0)
@@ -183,17 +201,10 @@ local function enableChatWindow(bool)
 end
 
 local function moveMouseToWorldPosition(worldPos)
-    local screenPos, onScreen = cam:WorldToViewportPoint(worldPos)
-    if not onScreen then return end
+	local screenPos, onScreen = cam:WorldToViewportPoint(worldPos)
+	if not onScreen then return end
 
-    local mousePos = uis:GetMouseLocation()
-    local dx = screenPos.X - mousePos.X
-    local dy = screenPos.Y - mousePos.Y
-
-    local threshold = 2
-    if math.abs(dx) > threshold or math.abs(dy) > threshold then
-        mousemoverel(dx * 0.8, dy * 0.8)
-    end
+	mousemoveabs(screenPos.X, screenPos.Y)
 end
 
 local function getAimlockClosestPlayer()
@@ -262,6 +273,24 @@ local function getMouselockClosestPlayer()
     return closest
 end
 
+local function getClosestPlayer()
+	local closest = nil
+	local shortestDist = math.huge
+    local hrp = getHRP()
+
+	for _, player in pairs(Players:GetPlayers()) do
+		if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+			local dist = (hrp.Position - player.Character.HumanoidRootPart.Position).Magnitude
+			if dist < shortestDist then
+				shortestDist = dist
+				closest = player
+			end
+		end
+	end
+
+	return closest
+end
+
 local function watchPlayer(target)
     local char = target.Character or target.CharacterAdded:Wait()
     local humanoid = char:WaitForChild("Humanoid")
@@ -271,11 +300,40 @@ local function watchPlayer(target)
 end
 
 local function unwatchPlayers()
-    cam.CameraSubject = character:WaitForChild("Humanoid")
+    cam.CameraSubject = getHumanoid()
 end
 
-local function teleportToPlayer(target)
-    character:WaitForChild("HumanoidRootPart").CFrame = target.Character:WaitForChild("HumanoidRootPart").CFrame + Vector3.new(-2, 2, 0)
+local function teleportToPlayer(target, offset)
+    local hrp = getHRP()
+    if offset then
+        hrp.CFrame = target.Character:WaitForChild("HumanoidRootPart").CFrame + offset
+    else
+        hrp.CFrame = target.Character:WaitForChild("HumanoidRootPart").CFrame
+    end
+end
+
+local function bringPlayer(target, library)
+    local hrp = getHRP()
+    local isKO
+    if target.Character then
+        isKO = target.Character.BodyEffects["K.O"].Value
+    else
+        isKO = false
+    end
+
+    if not isKO then
+        library:Notify(target.Name .. " is not K.O", 3)
+        return
+    end
+
+    local originalCFrame = hrp.CFrame
+    hrp.CFrame = CFrame.new(target.Character:WaitForChild("UpperTorso").Position + Vector3.new(0, 2, 0))
+    wait(0.2)
+    game:GetService("ReplicatedStorage"):WaitForChild("MainRemotes"):WaitForChild("MainRemoteEvent"):FireServer("NewGrabbing", false)
+    wait(0.1)
+    hrp.CFrame = originalCFrame
+    wait(0.3)
+    game:GetService("ReplicatedStorage"):WaitForChild("MainRemotes"):WaitForChild("MainRemoteEvent"):FireServer("NewGrabbing", false)
 end
 
 local function getPlayers()
@@ -454,9 +512,21 @@ end
 
 -- esp end
 
-local renderSteppedConnection = RunService.RenderStepped:Connect(function()
-	if autostomp then
-        local hrp = character:FindFirstChild("HumanoidRootPart")
+local function updateTargetStrafe(dt, target)
+    local hrp = getHRP()
+	if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+		targetStrafeAngle += dt * targetStrafeSpeed
+		local offset = Vector3.new(math.cos(targetStrafeAngle) * targetStrafeRadius, targetStrafeHeight, math.sin(targetStrafeAngle) * targetStrafeRadius)
+		hrp.Velocity = Vector3.zero
+		hrp.CFrame = CFrame.new(target.Character.HumanoidRootPart.Position + offset, target.Character.HumanoidRootPart.Position)
+	end
+end
+
+-- render stepped connection
+
+local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
+    if autostomp then
+        local hrp = getHRP()
         if autostompTpToPlayer then
             for _, v in pairs(Players:GetPlayers()) do
                 if v.Character and v.Character.BodyEffects and v.Character.BodyEffects["K.O"] and v.Character.BodyEffects["K.O"].Value then
@@ -486,50 +556,78 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function()
 	fovCircle.Position = mousePos
 
     if aimlockEnabled then
-        fovCircle.Visible = true
-        fovCircle.Radius = aimlockFovRadius
-        fovCircle.Color = Color3.fromRGB(255, 255, 255)
-        if aiming then
-            if not aimlockTarget or not aimlockTarget.Character or not aimlockTarget.Character:FindFirstChild("HumanoidRootPart") then
-                aimlockTarget = getAimlockClosestPlayer()
-            end
+		fovCircle.Visible = true
+		fovCircle.Radius = aimlockFovRadius
+		fovCircle.Color = Color3.fromRGB(255, 255, 255)
 
-            if aimlockTarget and aimlockTarget.Character and aimlockTarget.Character:FindFirstChild("HumanoidRootPart") then
-                local hrp = aimlockTarget.Character.HumanoidRootPart
-                local predictedPos = hrp.Position + (hrp.Velocity * getPrediction())
-                aimAt(predictedPos)
-            end
-        else
-            aimlockTarget = nil
-        end
-    else
-        fovCircle.Visible = false
-        aimlockTarget = nil
-    end
+		if aiming then
+			if not aimlockTarget
+			or not aimlockTarget.Character
+			or not aimlockTarget.Character:FindFirstChild("HumanoidRootPart")
+			or not aimlockTarget.Character:FindFirstChildOfClass("Humanoid")
+			or aimlockTarget.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+				aimlockTarget = getAimlockClosestPlayer()
+			end
+
+			if aimlockTarget
+			and aimlockTarget.Character
+			and aimlockTarget.Character:FindFirstChild("HumanoidRootPart")
+			and aimlockTarget.Character:FindFirstChildOfClass("Humanoid")
+			and aimlockTarget.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
+				local hrp = aimlockTarget.Character.HumanoidRootPart
+				local predictedPos = hrp.Position + (hrp.Velocity * getPrediction())
+                if not targetStrafe then
+				    aimAt(predictedPos)
+                else
+                    aimAt(hrp.Position)
+                end
+			else
+				aimlockTarget = nil
+			end
+		else
+			aimlockTarget = nil
+		end
+	else
+		fovCircle.Visible = false
+		aimlockTarget = nil
+	end
 
     if mouselockEnabled then
-        fovCircle.Radius = mouselockFovRadius
-        fovCircle.Color = Color3.fromRGB(205, 179, 255)
-        fovCircle.Visible = true
-        if mouseAiming then
-            if not mouselockTarget or not mouselockTarget.Character or not mouselockTarget.Character:FindFirstChild("HumanoidRootPart") then
-                mouselockTarget = getMouselockClosestPlayer()
-            end
+		fovCircle.Radius = mouselockFovRadius
+		fovCircle.Color = Color3.fromRGB(205, 179, 255)
+		fovCircle.Visible = true
 
-            if mouselockTarget and mouselockTarget.Character and mouselockTarget.Character:FindFirstChild("HumanoidRootPart") then
-                local hrp = mouselockTarget.Character.HumanoidRootPart
-                local predictedPos = hrp.Position + (hrp.Velocity * getPrediction())
-                moveMouseToWorldPosition(predictedPos)
-            end
-        else
-            mouselockTarget = nil
-        end
-    else
-        fovCircle.Visible = false
-        mouselockTarget = nil
-    end
-    
-    
+		if mouseAiming then
+			if not mouselockTarget
+			or not mouselockTarget.Character
+			or not mouselockTarget.Character:FindFirstChild("HumanoidRootPart")
+			or not mouselockTarget.Character:FindFirstChildOfClass("Humanoid")
+			or mouselockTarget.Character:FindFirstChildOfClass("Humanoid").Health <= 0 then
+				mouselockTarget = getMouselockClosestPlayer()
+			end
+
+			if mouselockTarget
+			and mouselockTarget.Character
+			and mouselockTarget.Character:FindFirstChild("HumanoidRootPart")
+			and mouselockTarget.Character:FindFirstChildOfClass("Humanoid")
+			and mouselockTarget.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
+				local hrp = mouselockTarget.Character.HumanoidRootPart
+				local predictedPos = hrp.Position + (hrp.Velocity * getPrediction())
+                if not targetStrafe then
+				    moveMouseToWorldPosition(predictedPos)
+                else
+                    moveMouseToWorldPosition(hrp.Position)                 
+                end
+			else
+				mouselockTarget = nil
+			end
+		else
+			mouselockTarget = nil
+		end
+	else
+		fovCircle.Visible = false
+		mouselockTarget = nil
+	end
     
     local screenCenter = cam.ViewportSize / 2
 
@@ -606,7 +704,9 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function()
         end
 		
         if distanceEnabled then
-		    v.distanceText.Text = getDistance(v.player) .. "m"
+            disance = getDistance(v.player)
+            if not disance then disance = "??" end
+		    v.distanceText.Text = disance .. "m"
 		    v.distanceText.Position = clampedPos - Vector2.new(0, -size.Y / 2 - 5)
 		    v.distanceText.Visible = true
         else
@@ -715,7 +815,7 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function()
 	end
 
 	if CFrameSpeed then
-		local hrp = character:FindFirstChild("HumanoidRootPart")
+		local hrp = getHRP()
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
 
 		local total = Vector3.zero
@@ -741,6 +841,13 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function()
 			end
 		end
 	end
+
+    if targetStrafe then
+        local target = aimlockTarget or mouselockTarget
+        if target then
+            updateTargetStrafe(dt, target)
+        end
+    end
 end)
 
 local Window = Library:CreateWindow({
@@ -1005,6 +1112,48 @@ cframespeedbox:AddSlider('cframespeedmultiplier', {
 	end
 })
 
+local targetStrafeBox = Tabs.Movement:AddLeftGroupbox('target strafe')
+targetStrafeBox:AddToggle('targetstrafetoggle', {
+    Text = "enabled",
+    Default = targetStrafe,
+    Callback = function(Value)
+        targetStrafe = Value
+    end
+})
+targetStrafeBox:AddSlider('targetstrafespeed', {
+    Text = "speed",
+    Default = targetStrafeSpeed,
+    Min = 1,
+    Max = 20,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(Value)
+        targetStrafeSpeed = Value
+    end
+})
+targetStrafeBox:AddSlider('targetstrafespeed', {
+    Text = "radius",
+    Default = targetStrafeRadius,
+    Min = 1,
+    Max = 30,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(Value)
+        targetStrafeRadius = Value
+    end
+})
+targetStrafeBox:AddSlider('targetstrafeheight', {
+    Text = "height",
+    Default = targetStrafeHeight,
+    Min = 0,
+    Max = 30,
+    Rounding = 0,
+    Compact = false,
+    Callback = function(Value)
+        targetStrafeHeight = Value
+    end
+})
+
 local miscbox = Tabs.Misc:AddLeftGroupbox('chat')
 miscbox:AddToggle('chatwindowtoggle', {
     Text = "chat window",
@@ -1029,6 +1178,7 @@ local playersListDropdown = playersbox:AddDropdown('players', {
         selectedPlayer = Players:FindFirstChild(Value)
     end,
 })
+
 playersbox:AddButton({
     Text = "watch",
     Func = function()
@@ -1042,10 +1192,15 @@ playersbox:AddButton({
 })
 
 playersbox:AddButton({
-	Text = "teleport to player",
+	Text = "goto",
 	Func = function()
 		teleportToPlayer(selectedPlayer)
 	end
+}):AddButton({
+    Text = "bring",
+    Func = function()
+        bringPlayer(selectedPlayer, Library)
+    end
 })
 
 local playersAddedConnection = Players.PlayerAdded:Connect(function(p)
