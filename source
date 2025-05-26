@@ -187,9 +187,14 @@ local function getPing()
 	return tonumber(pingStr:match("%d+")) or 0
 end
 
-local function getPrediction()
+local function getAimlockPrediction()
 	local ping = getPing()
-	return math.clamp(ping / 1000 - 0.2, 0.1, 0.2)
+	return math.clamp(ping / 1000 - 0.7, 0.1, 0.2)
+end
+
+local function getMouselockPrediction()
+	local ping = getPing()
+	return math.clamp(ping / 1000 - 0.1, 0.1, 0.2)
 end
 
 local function aimAt(pos)
@@ -201,10 +206,17 @@ local function enableChatWindow(bool)
 end
 
 local function moveMouseToWorldPosition(worldPos)
-	local screenPos, onScreen = cam:WorldToViewportPoint(worldPos)
-	if not onScreen then return end
+    local screenPos, onScreen = cam:WorldToViewportPoint(worldPos)
+    if not onScreen then return end
 
-	mousemoveabs(screenPos.X, screenPos.Y)
+    local mousePos = uis:GetMouseLocation()
+    local dx = screenPos.X - mousePos.X
+    local dy = screenPos.Y - mousePos.Y
+
+    local threshold = 2
+    if math.abs(dx) > threshold or math.abs(dy) > threshold then
+        mousemoverel(dx * 0.8, dy * 0.8)
+    end
 end
 
 local function getAimlockClosestPlayer()
@@ -330,7 +342,7 @@ local function bringPlayer(target, library)
     hrp.CFrame = CFrame.new(target.Character:WaitForChild("UpperTorso").Position + Vector3.new(0, 2, 0))
     wait(0.2)
     game:GetService("ReplicatedStorage"):WaitForChild("MainRemotes"):WaitForChild("MainRemoteEvent"):FireServer("NewGrabbing", false)
-    wait(0.1)
+    wait(0.2)
     hrp.CFrame = originalCFrame
     wait(0.3)
     game:GetService("ReplicatedStorage"):WaitForChild("MainRemotes"):WaitForChild("MainRemoteEvent"):FireServer("NewGrabbing", false)
@@ -573,9 +585,12 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
 			and aimlockTarget.Character
 			and aimlockTarget.Character:FindFirstChild("HumanoidRootPart")
 			and aimlockTarget.Character:FindFirstChildOfClass("Humanoid")
-			and aimlockTarget.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
-				local hrp = aimlockTarget.Character.HumanoidRootPart
-				local predictedPos = hrp.Position + (hrp.Velocity * getPrediction())
+			and aimlockTarget.Character:FindFirstChildOfClass("Humanoid").Health > 0
+			and aimlockTarget.Character.BodyEffects
+            and aimlockTarget.Character.BodyEffects["K.O"]
+            and not aimlockTarget.Character.BodyEffects["K.O"].Value then
+            	local hrp = aimlockTarget.Character.HumanoidRootPart
+				local predictedPos = hrp.Position + (hrp.Velocity * getAimlockPrediction())
                 if not targetStrafe then
 				    aimAt(predictedPos)
                 else
@@ -610,9 +625,12 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
 			and mouselockTarget.Character
 			and mouselockTarget.Character:FindFirstChild("HumanoidRootPart")
 			and mouselockTarget.Character:FindFirstChildOfClass("Humanoid")
-			and mouselockTarget.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
+			and mouselockTarget.Character:FindFirstChildOfClass("Humanoid").Health > 0
+            and mouselockTarget.Character.BodyEffects
+            and mouselockTarget.Character.BodyEffects["K.O"]
+            and not mouselockTarget.Character.BodyEffects["K.O"].Value then
 				local hrp = mouselockTarget.Character.HumanoidRootPart
-				local predictedPos = hrp.Position + (hrp.Velocity * getPrediction())
+				local predictedPos = hrp.Position + (hrp.Velocity * getMouselockPrediction())
                 if not targetStrafe then
 				    moveMouseToWorldPosition(predictedPos)
                 else
@@ -675,6 +693,11 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
 		local position = clampedPos - size / 2
         
         if boxesEnabled then
+            if v.player == aimlockTarget or v.player == mouselockTarget then
+                v.square.Color = Color3.fromRGB(255, 70, 70)
+            else
+                v.square.Color = Color3.fromRGB(255, 255, 255)
+            end
 		    v.square.Size = size
 		    v.square.Position = position
 		    v.square.Visible = true
@@ -683,6 +706,11 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
 		end
         
         if tracersEnabled then
+            if v.player == aimlockTarget or v.player == mouselockTarget then
+                v.line.Color = Color3.fromRGB(255, 70, 70)
+            else
+                v.line.Color = Color3.fromRGB(255, 255, 255)
+            end
 		    v.line.From = Vector2.new(screenCenter.X, cam.ViewportSize.Y)
 		    v.line.To = clampedPos
 		    v.line.Visible = true
@@ -691,10 +719,15 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
 		end
         
         if namesEnabled then
+            if v.player == aimlockTarget or v.player == mouselockTarget then
+                v.nameText.Color = Color3.fromRGB(255, 70, 70)
+            else
+                v.nameText.Color = Color3.fromRGB(255, 255, 255)
+            end
 		    v.nameText.Text = "@" .. v.player.Name
 		    v.nameText.Position = clampedPos - Vector2.new(0, size.Y / 2 + 15)
 		    v.nameText.Visible = true
-		
+
 		    v.displayName.Text = v.player.DisplayName
 		    v.displayName.Position = clampedPos - Vector2.new(0, size.Y / 2 + 30)
 		    v.displayName.Visible = true
@@ -704,6 +737,11 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
         end
 		
         if distanceEnabled then
+            if v.player == aimlockTarget or v.player == mouselockTarget then
+                v.distanceText.Color = Color3.fromRGB(255, 70, 70)
+            else
+                v.distanceText.Color = Color3.fromRGB(255, 255, 255)
+            end
             disance = getDistance(v.player)
             if not disance then disance = "??" end
 		    v.distanceText.Text = disance .. "m"
@@ -714,6 +752,11 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
         end
 		
         if healthEnabled then
+            if v.player == aimlockTarget or v.player == mouselockTarget then
+                v.healthText.Color = Color3.fromRGB(255, 70, 70)
+            else
+                v.healthText.Color = Color3.fromRGB(255, 255, 255)
+            end
             local health;
 			local pos;
             if not v.player.Character.Humanoid.Health then health = "???" else health = math.floor(v.player.Character.Humanoid.Health) end
