@@ -729,6 +729,9 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
             spoofedHit = predicted
             spoofedTarget = head
         end
+    else
+        targetAimTarget = nil
+        currentTargetAimTarget = nil
     end
     
     local screenCenter = cam.ViewportSize / 2
