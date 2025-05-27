@@ -9,10 +9,11 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local stats = game:GetService("Stats")
 local uis = game:GetService("UserInputService")
+local localPlayer = Players.LocalPlayer
 local cam = workspace.CurrentCamera
+local mouse = localPlayer:GetMouse()
 local drawing = Drawing or getgenv().Drawing
 
-local localPlayer = Players.LocalPlayer
 local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
 local backpack = localPlayer:WaitForChild("Backpack")
 local wallet = backpack:FindFirstChild("Wallet")
@@ -30,10 +31,17 @@ local mouselockKey = Enum.KeyCode.F
 local mouseAiming = false
 local mouselockFovRadius = 700
 
+local targetAimEnabled = false
+local targetAimKey = Enum.KeyCode.T
+local targetAimPart = nil
+local targetAiming = false
+
 local currentAimlockTarget = nil
 local currentMouselockTarget = nil
+local currentTargetAimTarget = nil
 local aimlockTarget = nil
 local mouselockTarget = nil
+local targetAimTarget = nil
 
 local espEnabled = false
 local boxesEnabled = true
@@ -89,6 +97,12 @@ local targetStrafeRadius = 10
 local targetStrafeSpeed = 8
 local targetStrafeHeight = 3
 local targetStrafeAngle = 0
+
+local spoofedHit = nil
+local spoofedTarget = nil
+
+local autoReload = false
+local autoReloadTrigger = 0
 
 local welcomeMsg = "welcome back!"
 
@@ -302,6 +316,61 @@ local function getClosestPlayer()
 
 	return closest
 end
+
+function getTargetAimClosestPlayer()
+    local closest = nil
+    local shortest = math.huge
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local part = player.Character.HumanoidRootPart
+            local screenPos, onScreen = workspace.CurrentCamera:WorldToViewportPoint(part.Position)
+
+            if onScreen then
+                local dist = (Vector2.new(mouse.X, mouse.Y) - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
+                if dist < shortest then
+                    closest = player
+                    shortest = dist
+                end
+            end
+        end
+    end
+
+    return closest
+end
+
+function targetAimCheck()
+    if targetAiming and currentTargetAimTarget then
+        local target = currentTargetAimTarget
+        if target.Character and target.Character:FindFirstChild("Head") then
+            targetAimTarget = target
+            targetAimPart = target.Character.Head
+            return true
+        else
+            targetAiming = false
+            currentTargetAimTarget = nil
+            targetAimTarget = nil
+            targetAimPart = nil
+        end
+    end
+    return false
+end
+
+-- target aim hook!
+local mt = getrawmetatable(game)
+local oldIndex = mt.__index
+setreadonly(mt, false)
+mt.__index = function(t, k)
+    if t == mouse and targetAimEnabled and targetAiming then
+        if k == "Hit" and spoofedHit then
+            return spoofedHit
+        elseif k == "Target" and spoofedTarget then
+            return spoofedTarget
+        end
+    end
+    return oldIndex(t, k)
+end
+setreadonly(mt, true)
 
 local function watchPlayer(target)
     local char = target.Character or target.CharacterAdded:Wait()
@@ -646,6 +715,21 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
 		fovCircle.Visible = false
 		mouselockTarget = nil
 	end
+
+    spoofedHit = nil
+    spoofedTarget = nil
+
+    if targetAimEnabled and targetAiming and currentTargetAimTarget then
+        local char = currentTargetAimTarget.Character
+        local head = char and char:FindFirstChild("Head")
+        print(currentTargetAimTarget.Name)
+
+        if head then
+            local predicted = head.CFrame + (head.Velocity * getAimlockPrediction())
+            spoofedHit = predicted
+            spoofedTarget = head
+        end
+    end
     
     local screenCenter = cam.ViewportSize / 2
 
@@ -693,7 +777,7 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
 		local position = clampedPos - size / 2
         
         if boxesEnabled then
-            if v.player == aimlockTarget or v.player == mouselockTarget then
+            if v.player == aimlockTarget or v.player == mouselockTarget or v.player == currentTargetAimTarget then
                 v.square.Color = Color3.fromRGB(255, 70, 70)
             else
                 v.square.Color = Color3.fromRGB(255, 255, 255)
@@ -706,7 +790,7 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
 		end
         
         if tracersEnabled then
-            if v.player == aimlockTarget or v.player == mouselockTarget then
+            if v.player == aimlockTarget or v.player == mouselockTarget or v.player == currentTargetAimTarget then
                 v.line.Color = Color3.fromRGB(255, 70, 70)
             else
                 v.line.Color = Color3.fromRGB(255, 255, 255)
@@ -719,7 +803,7 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
 		end
         
         if namesEnabled then
-            if v.player == aimlockTarget or v.player == mouselockTarget then
+            if v.player == aimlockTarget or v.player == mouselockTarget or v.player == currentTargetAimTarget then
                 v.nameText.Color = Color3.fromRGB(255, 70, 70)
             else
                 v.nameText.Color = Color3.fromRGB(255, 255, 255)
@@ -737,7 +821,7 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
         end
 		
         if distanceEnabled then
-            if v.player == aimlockTarget or v.player == mouselockTarget then
+            if v.player == aimlockTarget or v.player == mouselockTarget or v.player == currentTargetAimTarget then
                 v.distanceText.Color = Color3.fromRGB(255, 70, 70)
             else
                 v.distanceText.Color = Color3.fromRGB(255, 255, 255)
@@ -752,7 +836,7 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
         end
 		
         if healthEnabled then
-            if v.player == aimlockTarget or v.player == mouselockTarget then
+            if v.player == aimlockTarget or v.player == mouselockTarget or v.player == currentTargetAimTarget then
                 v.healthText.Color = Color3.fromRGB(255, 70, 70)
             else
                 v.healthText.Color = Color3.fromRGB(255, 255, 255)
@@ -891,6 +975,12 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
             updateTargetStrafe(dt, target)
         end
     end
+
+    if autoReload and localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Tool") and localPlayer.Character:FindFirstChildOfClass("Tool").Ammo and localPlayer.Character:FindFirstChildOfClass("Tool").Ammo.Value == 0 then
+        keypress(0x52)
+        task.wait()
+        keyrelease(0x52)
+    end
 end)
 
 local Window = Library:CreateWindow({
@@ -908,10 +998,6 @@ local Tabs = {
     Misc = Window:AddTab('misc'),
     ['UI Settings'] = Window:AddTab('settings'),
 }
-
-Library:Notify(welcomeMsg, 5)
-Library:SetWatermarkVisibility(true)
-Library:SetWatermark("ex.catch \ da hood script")
 
 local aimlockbox = Tabs.Combat:AddLeftGroupbox("locks")
 
@@ -981,6 +1067,22 @@ aimlockbox:AddSlider("mouselockradius", {
     Compact = true,
     Callback = function(Value)
         mouselockFovRadius = Value
+    end
+})
+
+local targetaimbox = Tabs.Combat:AddRightGroupbox('target aim')
+targetaimbox:AddToggle('targetaimtoggle', {
+    Text = 'enabled',
+    Default = targetAimEnabled,
+    Callback = function(Value)
+        targetAimEnabled = Value
+    end
+}):AddKeyPicker('targetaimkey', {
+    Default = 'T',
+    SyncToggleState = false,
+    NoUI = true,
+    ChangedCallback = function(New)
+        targetAimKey = New
     end
 })
 
@@ -1072,6 +1174,29 @@ local uisBeganConnection = uis.InputBegan:Connect(function(input, gpe)
             mouselockTarget = nil
         end
     end
+    if targetAimEnabled then
+        local code;
+        if targetAimKey.EnumType == Enum.KeyCode then
+            code = input.KeyCode
+        else
+            code = input.UserInputType
+        end
+        if code == targetAimKey then
+            if targetAiming then
+                currentTargetAimTarget = nil
+                targetAiming = false
+                targetAimTarget = nil
+                targetAimPart = nil
+            else
+                local closest = getTargetAimClosestPlayer()
+                if closest then
+                    currentTargetAimTarget = closest
+                    targetAiming = true
+                    print(closest.Name)
+                end
+            end
+        end
+    end
 
 	if moveKeys[input.KeyCode] then
 		inputState[input.KeyCode] = true
@@ -1092,7 +1217,7 @@ end)
 
 local autostompbox = Tabs.Combat:AddRightGroupbox("auto stomp")
 autostompbox:AddToggle("autostomp", {
-    Text = "auto stomp",
+    Text = "enabled",
     Default = autostomp,
     Tooltip = "automatically stomps K.Oed players when you stand on top of them",
     Callback = function(Value)
@@ -1106,7 +1231,15 @@ autostompbox:AddToggle("tptoplayer", {
     Tooltip = "automatically teleports you to K.Oed players and stomps them",
     Callback = function(Value)
         autostompTpToPlayer = Value
-        Library:Notify("tp to player " .. (autostompTpToPlayer and "enabled" or "disabled"))
+    end,
+})
+
+local otherbox = Tabs.Combat:AddRightGroupbox('other')
+otherbox:AddToggle('autoreload', {
+    Text = "auto reload",
+    Default = autoReload,
+    Callback = function(Value)
+        autoReload = Value
     end,
 })
 
@@ -1367,6 +1500,9 @@ Library:OnUnload(function()
     for _, v in pairs(Players:GetPlayers()) do
         removeBonePlayer(v)
     end
+    setreadonly(getrawmetatable(game), false)
+    getrawmetatable(game).__index = oldIndex
+    setreadonly(getrawmetatable(game), true)
 end)
 
 local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
