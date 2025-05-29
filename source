@@ -18,6 +18,8 @@ local character = localPlayer.Character or localPlayer.CharacterAdded:Wait()
 local backpack = localPlayer:WaitForChild("Backpack")
 local wallet = backpack:FindFirstChild("Wallet")
 
+local originalJumpHeight = character.Humanoid.JumpHeight
+
 local autostomp = false
 local autostompTpToPlayer = false
 
@@ -42,6 +44,11 @@ local currentTargetAimTarget = nil
 local aimlockTarget = nil
 local mouselockTarget = nil
 local targetAimTarget = nil
+
+local xAimlockPrediction = 0.144635
+local yAimlockPrediction = 0.1291
+local xMouselockPrediction = 0.1139
+local yMouselockPrediction = 0.0736
 
 local espEnabled = false
 local boxesEnabled = true
@@ -115,6 +122,12 @@ fovCircle.Color = Color3.fromRGB(255, 255, 255)
 fovCircle.Filled = false
 fovCircle.Visible = false
 
+if _G.excatchLoaded then
+    _G.excatchLibrary:Notify('script is already loaded!')
+    return
+end
+_G.excatchLoaded = true
+
 if not isfolder('excatch') then
     makefolder('excatch')
     welcomeMsg = "welcome to ex.catch!"
@@ -144,7 +157,7 @@ else
     writefile("excatch/fonts/main_encoded.ttf", "{\"name\":\"SmallestPixel7\",\"faces\":[{\"style\":\"normal\",\"assetId\":\"" .. getcustomasset("excatch/fonts/main.ttf") .. "\",\"name\":\"Regular\",\"weight\":400}]}")
 end
 
-local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
+_G.excatchLibrary = loadstring(game:HttpGet(repo .. 'Library.lua'))()
 local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
 local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
@@ -201,14 +214,24 @@ local function getPing()
 	return tonumber(pingStr:match("%d+")) or 0
 end
 
-local function getAimlockPrediction()
-	local ping = getPing()
-	return math.clamp(ping / 1000 - 0.7, 0.1, 0.2)
+local function getAimlockPrediction(hrp, velocity)
+    local ping = getPing() / 1000
+    local predicted = hrp.Position + Vector3.new(
+	    velocity.X * xAimlockPrediction * ping,
+	    velocity.Y * yAimlockPrediction * ping,
+	    velocity.Z * xAimlockPrediction * ping
+    )
+    return predicted
 end
 
-local function getMouselockPrediction()
-	local ping = getPing()
-	return math.clamp(ping / 1000 - 0.1, 0.1, 0.2)
+local function getMouselockPrediction(hrp, velocity)
+	local ping = getPing() / 1000
+    local predicted = hrp.Position + Vector3.new(
+        velocity.X * xMouselockPrediction * ping,
+        velocity.Y * yMouselockPrediction * ping,
+        velocity.Z * xMouselockPrediction * ping
+    )
+    return predicted
 end
 
 local function aimAt(pos)
@@ -228,7 +251,7 @@ local function moveMouseToWorldPosition(worldPos)
     local dy = screenPos.Y - mousePos.Y
 
     local threshold = 2
-    if math.abs(dx) > threshold or math.abs(dy) > threshold then
+    if math.abs(dx) < threshold or math.abs(dy) < threshold then
         mousemoverel(dx * 0.8, dy * 0.8)
     end
 end
@@ -237,7 +260,7 @@ local function getAimlockClosestPlayer()
     if currentAimlockTarget and currentAimlockTarget.Character and currentAimlockTarget.Character:FindFirstChild("HumanoidRootPart") then
         local hrp = currentAimlockTarget.Character.HumanoidRootPart
         local screenPos, onScreen = cam:WorldToViewportPoint(hrp.Position)
-        if onScreen and (Vector2.new(screenPos.X, screenPos.Y) - uis:GetMouseLocation()).Magnitude <= aimlockFovRadius then
+        if onScreen and (Vector2.new(screenPos.X, screenPos.Y) - uis:GetMouseLocation()).Magnitude >= aimlockFovRadius then
             return currentAimlockTarget
         else
             currentAimlockTarget = nil
@@ -410,11 +433,17 @@ local function bringPlayer(target, library)
     local originalCFrame = hrp.CFrame
     hrp.CFrame = CFrame.new(target.Character:WaitForChild("UpperTorso").Position + Vector3.new(0, 2, 0))
     wait(0.2)
-    game:GetService("ReplicatedStorage"):WaitForChild("MainRemotes"):WaitForChild("MainRemoteEvent"):FireServer("NewGrabbing", false)
+    keypress(0x47)
+    keyrelease(0x47)
     wait(0.2)
     hrp.CFrame = originalCFrame
-    wait(0.3)
-    game:GetService("ReplicatedStorage"):WaitForChild("MainRemotes"):WaitForChild("MainRemoteEvent"):FireServer("NewGrabbing", false)
+    wait(0.5)
+    keypress(0x47)
+    keyrelease(0x47)
+end
+
+local function setJumpHeight(humanoid, height)
+    humanoid.JumpHeight = height
 end
 
 local function getPlayers()
@@ -627,8 +656,7 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
             isKO = false
         end
 
-	    if onTopOf and isKO then
-		    print("Stomping " .. onTopOf.Name)
+	    if onTopOf and isKO and onTopOf ~= LocalPlayer then
             game:GetService("ReplicatedStorage"):WaitForChild("MainRemotes"):WaitForChild("MainRemoteEvent"):FireServer("Stomp")
 	    end
     end
@@ -659,7 +687,7 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
             and aimlockTarget.Character.BodyEffects["K.O"]
             and not aimlockTarget.Character.BodyEffects["K.O"].Value then
             	local hrp = aimlockTarget.Character.HumanoidRootPart
-				local predictedPos = hrp.Position + (hrp.Velocity * getAimlockPrediction())
+				local predictedPos = getAimlockPrediction(hrp, hrp.Velocity)
                 if not targetStrafe then
 				    aimAt(predictedPos)
                 else
@@ -699,7 +727,7 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
             and mouselockTarget.Character.BodyEffects["K.O"]
             and not mouselockTarget.Character.BodyEffects["K.O"].Value then
 				local hrp = mouselockTarget.Character.HumanoidRootPart
-				local predictedPos = hrp.Position + (hrp.Velocity * getMouselockPrediction())
+				local predictedPos = getMouselockPrediction(hrp, hrp.Velocity)
                 if not targetStrafe then
 				    moveMouseToWorldPosition(predictedPos)
                 else
@@ -725,13 +753,14 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
         print(currentTargetAimTarget.Name)
 
         if head then
-            local predicted = head.CFrame + (head.Velocity * getAimlockPrediction())
+            local predicted = CFrame.new(getAimlockPrediction(head, head.Velocity))
             spoofedHit = predicted
             spoofedTarget = head
         end
     else
         targetAimTarget = nil
         currentTargetAimTarget = nil
+        targetAiming = false
     end
     
     local screenCenter = cam.ViewportSize / 2
@@ -979,14 +1008,19 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
         end
     end
 
-    if autoReload and localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Tool") and localPlayer.Character:FindFirstChildOfClass("Tool").Ammo and localPlayer.Character:FindFirstChildOfClass("Tool").Ammo.Value == 0 then
-        keypress(0x52)
-        task.wait()
-        keyrelease(0x52)
+    if autoReload then
+        local char = localPlayer.Character
+        local tool = char:FindFirstChildOfClass("Tool")
+        local ammo = tool.Ammo
+        if char and tool and ammo and ammo.Value <= autoReloadTrigger then
+            keypress(0x52)
+            task.wait()
+            keyrelease(0x52)
+        end
     end
 end)
 
-local Window = Library:CreateWindow({
+local Window = _G.excatchLibrary:CreateWindow({
     Title = 'ex.catch',
     Center = true,
     AutoShow = true,
@@ -1014,7 +1048,7 @@ aimlocktoggle = aimlockbox:AddToggle("aimlock", {
     Callback = function(Value)
         if not Value then currentAimlockTarget = nil end
         aimlockEnabled = Value
-        Library:Notify("aimlock " .. (aimlockEnabled and "enabled" or "disabled"))
+        _G.excatchLibrary:Notify("aimlock " .. (aimlockEnabled and "enabled" or "disabled"))
         if mouselocktoggle.Value == true then
             mouselocktoggle:SetValue(false)
         end
@@ -1029,7 +1063,7 @@ aimlocktoggle:AddKeyPicker("aimlockkey", {
     end
 })
 aimlockbox:AddSlider("aimlockradius", {
-    Text = "aimlock fov radius",
+    Text = "aimlock",
     Default = aimlockFovRadius,
     Min = 50,
     Max = 500,
@@ -1040,6 +1074,60 @@ aimlockbox:AddSlider("aimlockradius", {
     end
 })
 
+local aimlockpredx = aimlockbox:AddSlider("aimlockpredx", {
+    Text = "x prediction",
+    Default = xAimlockPrediction,
+    Min = -1,
+    Max = 1,
+    Rounding = 10,
+    Compact = false,
+    Callback = function(Value)
+        xAimlockPrediction = Value
+    end
+})
+
+aimlockbox:AddInput('aimlockprecisex', {
+    Default = "",
+    Numeric = true,
+    Finished = false,
+
+    Text = "x prediction input",
+    Placeholder = 'set precisely...', -- placeholder text when the box is empty
+    -- MaxLength is also an option which is the max length of the text
+
+    Callback = function(Value)
+        aimlockpredx:SetValue(Value)
+    end
+})
+
+local aimlockpredy = aimlockbox:AddSlider("aimlockpredy", {
+    Text = "y prediction",
+    Default = yAimlockPrediction,
+    Min = -1,
+    Max = 1,
+    Rounding = 10,
+    Compact = false,
+    Callback = function(Value)
+        yAimlockPrediction = Value
+    end
+})
+
+aimlockbox:AddInput('aimlockprecisey', {
+    Default = "",
+    Numeric = true,
+    Finished = false,
+
+    Text = "y prediction input",
+    Placeholder = 'set precisely...', -- placeholder text when the box is empty
+    -- MaxLength is also an option which is the max length of the text
+
+    Callback = function(Value)
+        aimlockpredy:SetValue(Value)
+    end
+})
+
+aimlockbox:AddDivider()
+
 mouselocktoggle = aimlockbox:AddToggle("mouselock", {
     Text = "mouselock",
     Default = mouselockEnabled,
@@ -1047,7 +1135,7 @@ mouselocktoggle = aimlockbox:AddToggle("mouselock", {
     Callback = function(Value)
         if not Value then currentMouselockTarget = nil end
         mouselockEnabled = Value
-        Library:Notify("mouselock " .. (mouselockEnabled and "enabled" or "disabled"))
+        _G.excatchLibrary:Notify("mouselock " .. (mouselockEnabled and "enabled" or "disabled"))
         if aimlocktoggle.Value == true then
             aimlocktoggle:SetValue(false)
         end
@@ -1062,7 +1150,7 @@ mouselocktoggle:AddKeyPicker("mouselockkey", {
     end
 })
 aimlockbox:AddSlider("mouselockradius", {
-    Text = "mouselock fov radius",
+    Text = "mouselock fov",
     Default = mouselockFovRadius,
     Min = 100,
     Max = 1000,
@@ -1070,6 +1158,58 @@ aimlockbox:AddSlider("mouselockradius", {
     Compact = true,
     Callback = function(Value)
         mouselockFovRadius = Value
+    end
+})
+
+local mouselockpredx = aimlockbox:AddSlider("mouselockpredx", {
+    Text = "x prediction",
+    Default = xMouselockPrediction,
+    Min = -1,
+    Max = 1,
+    Rounding = 10,
+    Compact = false,
+    Callback = function(Value)
+        xMouselockPrediction = Value
+    end
+})
+
+aimlockbox:AddInput('mouselockprecisex', {
+    Default = "",
+    Numeric = true,
+    Finished = false,
+
+    Text = "x prediction input",
+    Placeholder = 'set precisely...', -- placeholder text when the box is empty
+    -- MaxLength is also an option which is the max length of the text
+
+    Callback = function(Value)
+        mouselockpredx:SetValue(Value)
+    end
+})
+
+local mouselockpredy = aimlockbox:AddSlider("mouselockpredy", {
+    Text = "y prediction",
+    Default = yMouselockPrediction,
+    Min = -1,
+    Max = 1,
+    Rounding = 10,
+    Compact = false,
+    Callback = function(Value)
+        yMouselockPrediction = Value
+    end
+})
+
+aimlockbox:AddInput('mouselockprecisey', {
+    Default = "",
+    Numeric = true,
+    Finished = false,
+
+    Text = "y prediction input",
+    Placeholder = 'set precisely...', -- placeholder text when the box is empty
+    -- MaxLength is also an option which is the max length of the text
+
+    Callback = function(Value)
+        mouselockpredy:SetValue(Value)
     end
 })
 
@@ -1089,7 +1229,11 @@ targetaimbox:AddToggle('targetaimtoggle', {
     end
 })
 
-local espbox = Tabs.Combat:AddLeftGroupbox('esp')
+targetaimbox:AddLabel('')
+targetaimbox:AddLabel('target aim prediction\nis synced with aimlock\nprediction')
+targetaimbox:AddLabel('')
+
+local espbox = Tabs.Combat:AddRightGroupbox('esp')
 espbox:AddToggle("esp", {
     Text = "esp",
     Default = espEnabled,
@@ -1220,12 +1364,12 @@ end)
 
 local autostompbox = Tabs.Combat:AddRightGroupbox("auto stomp")
 autostompbox:AddToggle("autostomp", {
-    Text = "enabled",
+    Text = "auto stomp",
     Default = autostomp,
     Tooltip = "automatically stomps K.Oed players when you stand on top of them",
     Callback = function(Value)
         autostomp = Value
-        Library:Notify("autostomp " .. (autostomp and "enabled" or "disabled"))
+        _G.excatchLibrary:Notify("autostomp " .. (autostomp and "enabled" or "disabled"))
     end,
 })
 autostompbox:AddToggle("tptoplayer", {
@@ -1234,16 +1378,27 @@ autostompbox:AddToggle("tptoplayer", {
     Tooltip = "automatically teleports you to K.Oed players and stomps them",
     Callback = function(Value)
         autostompTpToPlayer = Value
+        _G.excatchLibrary:Notify("tp to player " .. (autostompTpToPlayer and "enabled" or "disabled"))
     end,
 })
 
-local otherbox = Tabs.Combat:AddRightGroupbox('other')
-otherbox:AddToggle('autoreload', {
-    Text = "auto reload",
+local autoreloadbox = Tabs.Combat:AddRightGroupbox("auto reload")
+autoreloadbox:AddToggle('autoreloadtoggle', {
+    Text = "enabled",
     Default = autoReload,
     Callback = function(Value)
         autoReload = Value
-    end,
+    end
+})
+autoreloadbox:AddSlider('autoreloadtrigger', {
+    Text = "bullets to trigger",
+    Default = autoReloadTrigger,
+    Min = 0,
+    Max = 15,
+    Rounding = 0,
+    Callback = function(Value)
+        autoReloadTrigger = Value
+    end
 })
 
 local macrobox = Tabs.Movement:AddLeftGroupbox("macro stuff")
@@ -1251,14 +1406,14 @@ macrobox:AddButton({
     Text = "setup legit macro",
     Func = function()
         if wallet then
-            Library:Notify("setting up macro", 2)
+            _G.excatchLibrary:Notify("setting up macro", 2)
 	        game:GetService("ReplicatedStorage"):WaitForChild("MainRemotes"):WaitForChild("MainRemoteEvent"):FireServer(unpack({"AnimationPack", "Greet"}))
 	        wait(1.5)
 	        wallet.Parent = localPlayer.Character
 	        wallet.Parent = backpack
-            Library:Notify("macro setup done", 2)
+            _G.excatchLibrary:Notify("macro setup done", 2)
         else
-            Library:Notify("no wallet found in backpack", 5)
+            _G.excatchLibrary:Notify("no wallet found in backpack", 5)
         end
     end,
 })
@@ -1291,6 +1446,26 @@ cframespeedbox:AddSlider('cframespeedmultiplier', {
 	end
 })
 
+--[[
+local jumpheightbox = Tabs.Movement:AddRightGroupbox('jump height')
+local jumpheightslider = jumpheightbox:AddSlider('jumpheightslider', {
+    Text = "jump height",
+    Default = originalJumpHeight,
+    Min = 0,
+    Max = 300,
+    Rounding = 3,
+    Compact = true,
+    Callback = function(Value)
+        setJumpHeight(getHumanoid(), Value)
+    end
+})
+jumpheightbox:AddButton({
+    Text = 'reset jump height',
+    Func = function()
+        jumpheightslider:SetValue(originalJumpHeight)
+    end
+})
+--]]
 local targetStrafeBox = Tabs.Movement:AddLeftGroupbox('target strafe')
 targetStrafeBox:AddToggle('targetstrafetoggle', {
     Text = "enabled",
@@ -1378,7 +1553,7 @@ playersbox:AddButton({
 }):AddButton({
     Text = "bring",
     Func = function()
-        bringPlayer(selectedPlayer, Library)
+        bringPlayer(selectedPlayer, _G.excatchLibrary)
     end
 })
 
@@ -1490,14 +1665,13 @@ for _, p in pairs(Players:GetPlayers()) do
 	end
 end
 
-Library:OnUnload(function()
+_G.excatchLibrary:OnUnload(function()
     renderSteppedConnection:Disconnect()
     uisBeganConnection:Disconnect()
 	uisEndedConnection:Disconnect()
 	playersAddedConnection:Disconnect()
 	playersRemovingConnection:Disconnect()
     fovCircle:Remove()
-    Library.Unloaded = true
     clearESP()
     clearGlowESP()
     for _, v in pairs(Players:GetPlayers()) do
@@ -1506,17 +1680,30 @@ Library:OnUnload(function()
     setreadonly(getrawmetatable(game), false)
     getrawmetatable(game).__index = oldIndex
     setreadonly(getrawmetatable(game), true)
+    _G.excatchLoaded = false
+    _G.excatchLibrary.Unloaded = true
 end)
 
 local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
 
-MenuGroup:AddButton('Unload', function() Library:Unload() end)
+MenuGroup:AddButton('Unload', function() _G.excatchLibrary:Unload() end)
 MenuGroup:AddLabel('Menu bind'):AddKeyPicker('MenuKeybind', { Default = 'RightBracket', NoUI = true, Text = 'Menu keybind' })
-Library.ToggleKeybind = Options.MenuKeybind
+_G.excatchLibrary.ToggleKeybind = Options.MenuKeybind
 
-ThemeManager:SetLibrary(Library)
+ThemeManager:SetLibrary(_G.excatchLibrary)
+SaveManager:SetLibrary(_G.excatchLibrary)
+
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({ 'MenuKeybind' })
+
 ThemeManager:SetFolder("excatch")
+SaveManager:SetFolder("excatch")
+
+SaveManager:BuildConfigSection(Tabs['UI Settings'])
 ThemeManager:ApplyToTab(Tabs['UI Settings'])
 
 ThemeManager:ApplyTheme("main.json")
 ThemeManager:ThemeUpdate()
+
+SaveManager:LoadAutoloadConfig()
+_G.excatchLibrary:Notify("loaded autoload config")
