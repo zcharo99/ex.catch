@@ -45,7 +45,7 @@ local aimlockTarget = nil
 local mouselockTarget = nil
 local targetAimTarget = nil
 
-local xAimlockPrediction = 0.144635
+local xAimlockPrediction = 0.144735
 local yAimlockPrediction = 0.1291
 local xMouselockPrediction = 0.1139
 local yMouselockPrediction = 0.0736
@@ -90,7 +90,6 @@ local playersList = nil
 
 local CFrameSpeedMultiplier = 3
 local CFrameSpeed = false
-local CFrameSpeedKey = Enum.KeyCode.Q
 local moveKeys = {
 	[Enum.KeyCode.W] = Vector3.new(0, 0, -1),
 	[Enum.KeyCode.S] = Vector3.new(0, 0, 1),
@@ -110,6 +109,12 @@ local spoofedTarget = nil
 
 local autoReload = false
 local autoReloadTrigger = 0
+
+local fakeMacro = false
+local fakeMacroSpeed = 800
+
+local jumpPower = false
+local jumpPowerNum = 100
 
 local welcomeMsg = "welcome back!"
 
@@ -750,9 +755,11 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
     if targetAimEnabled and targetAiming and currentTargetAimTarget then
         local char = currentTargetAimTarget.Character
         local head = char and char:FindFirstChild("Head")
+        local bodyeffects = char and char:WaitForChild("BodyEffects")
+        local KO = bodyeffects["K.O"]
         print(currentTargetAimTarget.Name)
 
-        if head then
+        if head and bodyeffects and KO and not KO.Value then
             local predicted = CFrame.new(getAimlockPrediction(head, head.Velocity))
             spoofedHit = predicted
             spoofedTarget = head
@@ -1017,6 +1024,18 @@ local renderSteppedConnection = RunService.RenderStepped:Connect(function(dt)
             task.wait()
             keyrelease(0x52)
         end
+    end
+
+    if fakeMacro and localPlayer and localPlayer.Character and localPlayer.Character.Humanoid then
+        localPlayer.Character.Humanoid.WalkSpeed = fakeMacroSpeed
+    else
+        localPlayer.Character.Humanoid.WalkSpeed = 16
+    end
+
+    if jumpPower and localPlayer and localPlayer.Character and localPlayer.Character.Humanoid then
+        localPlayer.Character.Humanoid.JumpPower = jumpPowerNum
+    else
+        localPlayer.Character.Humanoid.JumpPower = 50
     end
 end)
 
@@ -1418,6 +1437,40 @@ macrobox:AddButton({
     end,
 })
 
+local fakemacrobox = Tabs.Movement:AddLeftGroupbox('fake macro')
+fakemacrobox:AddToggle('fakemacro', {
+    Text = 'enabled',
+    Default = fakeMacro,
+    Callback = function(Value)
+        fakeMacro = Value
+    end
+}):AddKeyPicker('fakemacrokey', {
+    Default = 'H',
+    SyncToggleState = true,
+    Mode = 'Toggle',
+    NoUI = true
+})
+
+local jumppowerbox = Tabs.Movement:AddRightGroupbox('jump power')
+jumppowerbox:AddToggle('jumppower', {
+    Text = 'enabled',
+    Default = jumpPower,
+    Callback = function(Value)
+        jumpPower = Value
+    end
+})
+jumppowerbox:AddSlider('jumppowernum', {
+    Text = "power",
+    Default = jumpPowerNum,
+    Min = 0,
+    Max = 800,
+    Rounding = 0,
+    Compact = true,
+    Callback = function(Value)
+        jumpPowerNum = Value
+    end
+})
+
 local cframespeedbox = Tabs.Movement:AddRightGroupbox('cframe speed')
 cframespeedbox:AddToggle('cframespeed', {
 	Text = 'enabled',
@@ -1429,10 +1482,7 @@ cframespeedbox:AddToggle('cframespeed', {
     Default = 'Q',
     SyncToggleState = true,
     Mode = 'Toggle',
-    NoUI = true,
-    ChangedCallback = function(New)
-        CFrameSpeedKey = New
-    end
+    NoUI = true
 })
 cframespeedbox:AddSlider('cframespeedmultiplier', {
 	Text = "multiplier",
