@@ -1,0 +1,46 @@
+getgenv().excatch = {
+    SilentAim = {
+        Enabled = false,
+        ShowFOV = true,
+        FOV = 120,
+		    FOVColor = Color3.fromRGB(170, 0, 255),
+        Predictions = {X = 0.1273615134, Y = 0.153728171},
+    },
+    Triggerbot = {
+        Enabled = true,
+        ToggleKey = "V",
+    },
+    AutoReload = {
+        Enabled = true,
+    },
+	  Camlock = {
+		    Enabled = true,
+		    ShowFOV = false,
+		    FOV = 200,
+		    FOVColor = Color3.fromRGB(170, 0, 255),
+		    Predictions = {X = 0.1273615134, Y = 0.153728171},
+		    Key = "C",
+	  },
+	  Crosshair = {
+		    Enabled = true,
+		    AttachToTarget = true,
+		    Spin = true,
+		    Color = Color3.fromRGB(170, 85, 255),
+		    Radius = 13,
+		    LineLength = 12,
+		    LineThickness = 2,
+	  },
+    ColorCorrection = {
+        Enabled = true,
+        Saturation = 1.5,
+        Contrast = 0.05,
+        Brightness = 0,
+    },
+    Notifications = {
+        Enabled = true,
+        TopColor = Color3.fromRGB(170, 85, 255),
+    },
+    SelfDestructKey = "U",
+}
+
+loadstring(game:HttpGet("https://raw.githubusercontent.com/zcharo99/ex.catch/refs/heads/main/closetsource"))()
