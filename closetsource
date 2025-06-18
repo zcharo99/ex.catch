@@ -1,0 +1,514 @@
+if not getgenv().excatch then
+    error("No ex.catch table found.")
+end
+-- adonis bypass
+local getinfo = getinfo or debug.getinfo
+local DEBUG = false
+local Hooked = {}
+
+local Detected, Kill
+
+setthreadidentity(2)
+
+for i, v in getgc(true) do
+    if typeof(v) == "table" then
+        local DetectFunc = rawget(v, "Detected")
+        local KillFunc = rawget(v, "Kill")
+    
+        if typeof(DetectFunc) == "function" and not Detected then
+            Detected = DetectFunc
+            
+            local Old; Old = hookfunction(Detected, function(Action, Info, NoCrash)
+                if Action ~= "_" then
+                    if DEBUG then
+                        
+                    end
+                end
+                
+                return true
+            end)
+
+            table.insert(Hooked, Detected)
+        end
+
+        if rawget(v, "Variables") and rawget(v, "Process") and typeof(KillFunc) == "function" and not Kill then
+            Kill = KillFunc
+            local Old; Old = hookfunction(Kill, function(Info)
+                if DEBUG then
+                    
+                end
+            end)
+
+            table.insert(Hooked, Kill)
+        end
+    end
+end
+
+local Old; Old = hookfunction(getrenv().debug.info, newcclosure(function(...)
+    local LevelOrFunc, Info = ...
+
+    if Detected and LevelOrFunc == Detected then
+        if DEBUG then
+            
+        end
+
+        return coroutine.yield(coroutine.running())
+    end
+    
+    return Old(...)
+end))
+-- setthreadidentity(9)
+setthreadidentity(7)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = workspace.CurrentCamera
+
+local connections = {}
+
+local crosshairLines = {}
+local crosshairRadius = 14
+local crosshairLength = 12
+local thickness = 2
+
+for i = 1, 4 do
+	local line = Drawing.new("Line")
+	line.Color = getgenv().excatch.Crosshair.Color
+	line.Thickness = getgenv().excatch.Crosshair.LineThickness
+	line.Transparency = 1
+	line.Visible = getgenv().excatch.Crosshair.Enabled
+	table.insert(crosshairLines, line)
+end
+
+local crosshairRot = 0
+
+local triggerbotEnabled = false
+local camlock = false
+local camlockTarget = nil
+
+if not getgenv().excatch.SilentAim.Enabled then
+    getgenv().excatch.SilentAim.ShowFOV = false
+end
+
+if not getgenv().excatch.Camlock.Enabled then
+    getgenv().excatch.Camlock.ShowFOV = false
+end
+
+if not getgenv().excatch.SilentAim.ShowFOV and getgenv().excatch.Camlock.ShowFOV then
+    getgenv().excatch.Camlock.ShowFOV = false
+end
+
+local silFovCircle = Drawing.new("Circle")
+silFovCircle.Radius = getgenv().excatch.SilentAim.FOV
+silFovCircle.Thickness = 2
+silFovCircle.Color = getgenv().excatch.SilentAim.FOVColor
+silFovCircle.Transparency = 0.7
+silFovCircle.Filled = false
+silFovCircle.Visible = getgenv().excatch.SilentAim.ShowFOV
+
+local camFovCircle = Drawing.new("Circle")
+camFovCircle.Radius = getgenv().excatch.Camlock.FOV
+camFovCircle.Thickness = 2
+camFovCircle.Color = getgenv().excatch.Camlock.FOVColor
+camFovCircle.Transparency = 0.7
+camFovCircle.Filled = false
+camFovCircle.Visible = getgenv().excatch.Camlock.ShowFOV
+
+local oldColorCorrections = {}
+if getgenv().excatch.ColorCorrection.Enabled then
+    for _, v in pairs(Lighting:GetChildren()) do
+	    if v:IsA("ColorCorrectionEffect") then
+            local clone = v:Clone()
+            table.insert(oldColorCorrections, clone)
+            for _, c in pairs(oldColorCorrections) do
+                c.Parent = workspace
+            end
+		    v:Destroy()
+	    end
+    end
+
+    local colorCorrection = Instance.new("ColorCorrectionEffect")
+    colorCorrection.Name = "ColorCorrection"
+    colorCorrection.TintColor = Color3.fromRGB(255, 255, 255)
+    colorCorrection.Saturation = getgenv().excatch.ColorCorrection.Saturation
+    colorCorrection.Contrast = getgenv().excatch.ColorCorrection.Contrast
+    colorCorrection.Brightness = getgenv().excatch.ColorCorrection.Brightness
+    colorCorrection.Parent = Lighting
+end
+
+local notifGui = Instance.new("ScreenGui")
+notifGui.Name = "CamlockNotifGUI"
+notifGui.IgnoreGuiInset = true
+notifGui.ResetOnSpawn = false
+notifGui.DisplayOrder = 20
+notifGui.Parent = game:GetService("CoreGui")
+
+local notifHolder = Instance.new("Frame")
+notifHolder.Name = "NotifHolder"
+notifHolder.AnchorPoint = Vector2.new(1, 0)
+notifHolder.Position = UDim2.new(1, -10, 0, 10)
+notifHolder.Size = UDim2.new(0, 250, 1, 0)
+notifHolder.BackgroundTransparency = 1
+notifHolder.Parent = notifGui
+
+local notifs = {}
+
+local function showNotif(text, duration)
+    if getgenv().excatch.Notifications.Enabled then
+	duration = duration or 2.5
+
+	local notif = Instance.new("TextLabel")
+	notif.Size = UDim2.new(0, 250, 0, 30)
+	notif.Position = UDim2.new(0, 300, 0, 0)
+	notif.AnchorPoint = Vector2.new(1, 0)
+	notif.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	notif.BackgroundTransparency = 0
+	notif.TextColor3 = Color3.fromRGB(255, 255, 255)
+	notif.Font = Enum.Font.Ubuntu
+	notif.TextSize = 16
+	notif.Text = text
+	notif.BorderSizePixel = 0
+	notif.TextXAlignment = Enum.TextXAlignment.Left
+	notif.Parent = notifHolder
+
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0, 8)
+	padding.Parent = notif
+
+	local topBar = Instance.new("Frame")
+	topBar.Size = UDim2.new(1, 0, 0, 2)
+	topBar.Position = UDim2.new(0, -8, 0, 0)
+	topBar.BackgroundColor3 = getgenv().excatch.Notifications.TopColor
+	topBar.BorderSizePixel = 0
+	topBar.Parent = notif
+
+	table.insert(notifs, notif)
+
+	local function updateNotifs()
+		for i, n in ipairs(notifs) do
+			local goal = UDim2.new(1, 0, 0, (i - 1) * 40)
+			TweenService:Create(n, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Position = goal
+			}):Play()
+		end
+	end
+
+	updateNotifs()
+
+	TweenService:Create(notif, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Position = UDim2.new(1, 0, 0, (#notifs - 1) * 40)
+	}):Play()
+
+	TweenService:Create(topBar, TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {
+		Size = UDim2.new(0, 0, 0, 2)
+	}):Play()
+
+	task.delay(duration, function()
+		local out = TweenService:Create(notif, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			Position = notif.Position + UDim2.new(0, 260, 0, 0)
+		})
+		out:Play()
+		out.Completed:Wait()
+
+		for i, n in ipairs(notifs) do
+			if n == notif then
+				table.remove(notifs, i)
+				break
+			end
+		end
+
+		notif:Destroy()
+		updateNotifs()
+	end)
+    end
+end
+
+local function getPrediction(part, velocity)
+    local predicted = part.Position + Vector3.new(
+	    velocity.X * getgenv().excatch.SilentAim.Predictions.X,
+	    velocity.Y * getgenv().excatch.SilentAim.Predictions.Y,
+	    velocity.Z * getgenv().excatch.SilentAim.Predictions.X
+    )
+    return predicted
+end
+
+local function getSilentAimClosestPlayer()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = player.Character.HumanoidRootPart
+            local screenPos, onScreen = Camera:WorldToScreenPoint(hrp.Position)
+            if onScreen then
+                local mousePos = Vector2.new(Mouse.X, Mouse.Y)
+                local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                if dist <= getgenv().excatch.SilentAim.FOV and dist < shortestDistance then
+                    shortestDistance = dist
+                    closestPlayer = player
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+local function getCamlockClosestPlayer()
+    local closestPlayer = nil
+    local shortestDistance = math.huge
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = player.Character.HumanoidRootPart
+            local screenPos, onScreen = Camera:WorldToScreenPoint(hrp.Position)
+            if onScreen then
+                local mousePos = Vector2.new(Mouse.X, Mouse.Y)
+                local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                if dist <= getgenv().excatch.SilentAim.FOV and dist < shortestDistance then
+                    shortestDistance = dist
+                    closestPlayer = player
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+local function isTarget(part)
+	local model = part:FindFirstAncestorOfClass("Model")
+	return model and model:FindFirstChild("Humanoid") and model ~= LocalPlayer.Character
+end
+
+local function isVisible(part)
+	local origin = Camera.CFrame.Position
+	local direction = (part.Position - origin)
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
+	raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+	local raycastResult = workspace:Raycast(origin, direction, raycastParams)
+	if raycastResult then
+		return raycastResult.Instance:IsDescendantOf(part.Parent)
+	else
+		return true
+	end
+end
+
+local mt = getrawmetatable(game)
+local oldIndex = mt.__index
+setreadonly(mt, false)
+
+mt.__index = newcclosure(function(self, key)
+    if self == Mouse and key == "Hit" and getgenv().excatch.SilentAim.Enabled then
+        local target = getSilentAimClosestPlayer()
+        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+            return CFrame.new(getPrediction(target.Character.Head, target.Character.Head.Velocity))
+        end
+    end
+    return oldIndex(self, key)
+end)
+
+setreadonly(mt, true)
+
+local mousePos = UserInputService:GetMouseLocation()
+local centerX = mousePos.X
+local centerY = mousePos.Y
+
+table.insert(connections, RunService.RenderStepped:Connect(function(dt)
+	if getgenv().excatch.Crosshair.Spin then
+        crosshairRot = crosshairRot + dt * 2
+    end
+	mousePos = UserInputService:GetMouseLocation()
+
+	silFovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
+    camFovCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
+
+	if getgenv().excatch.Crosshair.Enabled then
+		for i = 0, 3 do
+			local angle = crosshairRot + math.rad(90 * i)
+			local dirX = math.cos(angle)
+			local dirY = math.sin(angle)
+
+			local radius = getgenv().excatch.Crosshair.Radius
+			local length = getgenv().excatch.Crosshair.LineLength
+
+			local line = crosshairLines[i + 1]
+			line.From = Vector2.new(centerX + dirX * (radius - length/2), centerY + dirY * (radius - length/2))
+			line.To = Vector2.new(centerX + dirX * (radius + length/2), centerY + dirY * (radius + length/2))
+		end
+	end
+
+	if getgenv().excatch.Triggerbot.Enabled and triggerbotEnabled then
+		local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+		if tool and tool:FindFirstChild("Ammo") then
+			if getgenv().excatch.SilentAim.Enabled then
+				local target = getCamlockClosestPlayer()
+				if target and target.Character and target.Character:FindFirstChild("Head") then
+					local predictedPos = getPrediction(target.Character.Head, target.Character.Head.Velocity)
+					local screenPos, onScreen = Camera:WorldToViewportPoint(predictedPos)
+
+					if onScreen then
+						local dist = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(mousePos.X, mousePos.Y)).Magnitude
+
+						if dist <= getgenv().excatch.SilentAim.FOV then
+							local rayOrigin = Camera.CFrame.Position
+							local rayDirection = (predictedPos - rayOrigin).Unit * 500
+
+							local rayParams = RaycastParams.new()
+							rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+							rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+							rayParams.IgnoreWater = true
+
+							local result = workspace:Raycast(rayOrigin, rayDirection, rayParams)
+
+							if result and result.Instance and result.Instance:IsDescendantOf(target.Character) then
+								tool:Activate()
+							end
+						end
+					end
+				end
+			else
+				-- normal triggerbot without silent aim
+				local target = Mouse.Target
+				if target and isTarget(target) then
+					tool:Activate()
+				end
+			end
+		end
+	else
+
+	end
+
+    if getgenv().excatch.AutoReload.Enabled then
+        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+		if tool and tool:FindFirstChild("Ammo") and tool.Ammo.Value == 0 then
+            keypress(0x52)
+            wait(0.05)
+            keyrelease(0x52)
+            wait(0.1)
+        end
+    end
+
+	if getgenv().excatch.Camlock.Enabled and camlock and camlockTarget and camlockTarget.Character and camlockTarget.Character:FindFirstChild("Head") and camlockTarget.Character:FindFirstChild("UpperTorso") and camlockTarget.Character:FindFirstChild("LowerTorso") then
+		charpos = Camera:WorldToViewportPoint(camlockTarget.Character.UpperTorso.Position)
+        if getgenv().excatch.Crosshair.AttachToTarget then
+            centerX = charpos.X
+            centerY = charpos.Y
+        else
+            centerX = mousePos.X
+		    centerY = mousePos.Y
+        end
+
+        local head = camlockTarget.Character.Head
+		local lt = camlockTarget.Character.LowerTorso
+		local pred = getgenv().excatch.Camlock.Predictions
+		local camPos = Camera.CFrame.Position
+		local distance = (camPos - head.Position).Magnitude
+
+		local predicted
+
+		if lt.Velocity.Y < -0.1 then
+			local fallCorrection = math.clamp(distance / 15, 1, 20) -- scales from 1 to 6, tweak as needed nya~
+			predicted = lt.Position + Vector3.new(
+				lt.Velocity.X * pred.X,
+				lt.Velocity.Y * pred.Y - fallCorrection,
+				lt.Velocity.Z * pred.X
+			)
+		else
+			predicted = head.Position + Vector3.new(
+				head.Velocity.X * pred.X,
+				0,
+				head.Velocity.Z * pred.X
+			)
+		end
+
+		Camera.CFrame = CFrame.new(camPos, predicted)
+	else
+		centerX = mousePos.X
+		centerY = mousePos.Y
+	end
+    
+    if getgenv().excatch.SilentAim.Enabled and getgenv().excatch.Crosshair.AttachToTarget then
+        local target = getSilentAimClosestPlayer()
+        if target and target.Character and target.Character:WaitForChild("UpperTorso") then
+            charpos = Camera:WorldToViewportPoint(target.Character.UpperTorso.Position)
+            centerX = charpos.X
+            centerY = charpos.Y
+        else
+            centerX = mousePos.X
+		    centerY = mousePos.Y
+        end
+    end
+end))
+
+table.insert(connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed or UserInputService:GetFocusedTextBox() then return end
+    if input.KeyCode == Enum.KeyCode[getgenv().excatch.SelfDestructKey] then
+        if silFovCircle and silFovCircle:Remove() then
+            silFovCircle.Visible = false
+            pcall(camFovCircle:Remove())
+        end
+
+        if camFovCircle and camFovCircle:Remove() then
+            camFovCircle.Visible = false
+            pcall(camFovCircle:Remove())
+        end
+
+        for _, line in pairs(crosshairLines) do
+		    line:Remove()
+		end
+
+		if notifGui then
+			notifGui:Destroy()
+		end
+
+        setreadonly(mt, false)
+        mt.__index = oldIndex
+        setreadonly(mt, true)
+
+        for _, v in pairs(Lighting:GetChildren()) do
+            if v:IsA("ColorCorrectionEffect") then
+                v:Destroy()
+            end
+        end
+        task.wait(0.1)
+        for _, c in pairs(oldColorCorrections) do
+            c.Parent = Lightning
+        end
+
+        if connections then
+            for _, conn in ipairs(connections) do
+                conn:Disconnect()
+            end
+            connections = nil
+        end
+    end
+    if getgenv().excatch.Triggerbot.Enabled and input.KeyCode == Enum.KeyCode[getgenv().excatch.Triggerbot.ToggleKey] then
+		triggerbotEnabled = not triggerbotEnabled
+	end
+	if getgenv().excatch.Camlock.Enabled and input.KeyCode == Enum.KeyCode[getgenv().excatch.Camlock.Key] then
+		camlock = not camlock
+		if camlock then
+			camlockTarget = getCamlockClosestPlayer()
+			if camlockTarget then
+				showNotif("locked onto " .. camlockTarget.Name)
+			else
+				showNotif("no target found")
+				camlock = false
+			end
+		else
+			camlockTarget = nil
+			showNotif("target unlocked")
+		end
+	end
+end))
+
+showNotif("loaded ex.catch")
